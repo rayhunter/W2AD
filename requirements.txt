@@ -1,0 +1,14 @@
+streamlit
+streamlit-antd-components
+pydantic
+pytest
+requests
+html2text
+pyyaml
+PyGithub
+GitPython
+beautifulsoup4
+python-dotenv
+google-cloud-storage
+Pillow>=10.2.0
+requests==2.31.0

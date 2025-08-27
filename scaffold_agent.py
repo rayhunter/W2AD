@@ -1,6 +1,7 @@
 import os
 import json
 import yaml
+import re
 from pathlib import Path
 from typing import Dict, List, Any
 from pydantic import BaseModel
@@ -57,13 +58,45 @@ class AstroScaffoldAgent:
             full_path.mkdir(parents=True, exist_ok=True)
             logger.info(f"Created directory: {full_path}")
             
+    def validate_and_sanitize_content(self, content: str) -> str:
+        """Validate and sanitize markdown content to prevent module import errors.
+        
+        This function fixes common issues that can cause Astro build errors.
+        """
+        # Fix image references that are just numbers (e.g., ![Alt](15) -> descriptive text)
+        content = re.sub(
+            r'!\[([^\]]*)\]\(([0-9]+)\)',
+            r'_[Image: \1]_',
+            content
+        )
+        
+        # Fix empty image references
+        content = re.sub(
+            r'!\[([^\]]*)\]\(\s*\)',
+            r'_[Image: \1]_',
+            content
+        )
+        
+        # Fix image references with invalid characters that could cause imports
+        content = re.sub(
+            r'!\[([^\]]*)\]\(([^)]*[<>"\|\*\?]+[^)]*)\)',
+            r'_[Image: \1]_',
+            content
+        )
+        
+        logger.debug("Content sanitized to prevent module import errors")
+        return content
+    
     def create_content_files(self):
         """Create content files from the provided content."""
         # Create blog posts
         for post in self.content["posts"]:
             file_path = self.project_root / post["path"]
             file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(post["content"])
+            
+            # Validate and sanitize content before writing
+            sanitized_content = self.validate_and_sanitize_content(post["content"])
+            file_path.write_text(sanitized_content)
             self.project_structure.content_files.append(str(file_path))
             logger.info(f"Created post: {file_path}")
             
@@ -71,7 +104,10 @@ class AstroScaffoldAgent:
         for page in self.content["pages"]:
             file_path = self.project_root / page["path"]
             file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(page["content"])
+            
+            # Validate and sanitize content before writing
+            sanitized_content = self.validate_and_sanitize_content(page["content"])
+            file_path.write_text(sanitized_content)
             self.project_structure.content_files.append(str(file_path))
             logger.info(f"Created page: {file_path}")
             

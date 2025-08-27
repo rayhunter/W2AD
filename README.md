@@ -77,15 +77,24 @@ After migration, clients get:
 
 ## 📋 Agent Architecture
 
-The migration uses a 7-agent pipeline:
+The migration uses a 7-agent pipeline with built-in content sanitization:
 
 1. **ExtractionAgent** - WordPress REST API content extraction
-2. **TransformAgent** - HTML to Markdown conversion
+2. **TransformAgent** - HTML to Markdown conversion with content sanitization
 3. **MediaAgent** - Asset migration and optimization
 4. **CMSConfigAgent** - Decap CMS configuration generation
-5. **AstroScaffoldAgent** - Complete project scaffolding
+5. **AstroScaffoldAgent** - Complete project scaffolding with validation
 6. **RepoAgent** - GitHub repository creation
 7. **DeployAgent** - Automated deployment setup
+
+### 🛡️ Content Sanitization
+
+The migration tool includes comprehensive content sanitization to prevent build errors:
+
+- **Image Reference Validation** - Fixes numeric image references (e.g., `![Alt](15)` → `_[Image: Alt]_`)
+- **Empty Reference Cleanup** - Handles empty image references gracefully
+- **Character Escaping** - Sanitizes problematic characters that could cause module import errors
+- **Automatic Testing** - Includes automated tests to prevent regressions
 
 ## 🔧 Configuration
 

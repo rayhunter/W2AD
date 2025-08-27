@@ -51,6 +51,35 @@ class TransformAgent:
         
         return content.strip()
     
+    def sanitize_markdown_content(self, markdown_content: str) -> str:
+        """Sanitize markdown content to prevent module import errors.
+        
+        This function fixes common issues that can cause Astro build errors,
+        particularly with image references that might be interpreted as module imports.
+        """
+        # Fix image references that are just numbers (e.g., ![Alt](15) -> descriptive text)
+        markdown_content = re.sub(
+            r'!\[([^\]]*)\]\(([0-9]+)\)',
+            r'_[Image: \1]_',
+            markdown_content
+        )
+        
+        # Fix empty image references
+        markdown_content = re.sub(
+            r'!\[([^\]]*)\]\(\s*\)',
+            r'_[Image: \1]_',
+            markdown_content
+        )
+        
+        # Fix image references with invalid characters that could cause imports
+        markdown_content = re.sub(
+            r'!\[([^\]]*)\]\(([^)]*[<>"\|\*\?]+[^)]*)\)',
+            r'_[Image: \1]_',
+            markdown_content
+        )
+        
+        return markdown_content
+    
     def html_to_markdown(self, html_content: str) -> str:
         """Convert HTML content to Markdown."""
         cleaned_html = self.clean_html_content(html_content)
@@ -58,6 +87,10 @@ class TransformAgent:
         
         # Clean up the markdown
         markdown = re.sub(r'\n{3,}', '\n\n', markdown)
+        
+        # Sanitize markdown content to prevent module import errors
+        markdown = self.sanitize_markdown_content(markdown)
+        
         return markdown.strip()
     
     def create_frontmatter(self, title: str, date: str, **kwargs) -> str:

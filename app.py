@@ -8,6 +8,7 @@ from transform_agent import transform_bundle
 from extraction_agent import WPContentBundle
 from cms_config_agent import generate_cms_config
 from scaffold_agent import AstroScaffoldAgent, create_astro_project
+from github_agent import create_github_repo
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -27,6 +28,8 @@ if 'cms_config' not in st.session_state:
     st.session_state.cms_config = None
 if 'project_scaffold' not in st.session_state:
     st.session_state.project_scaffold = None
+if 'github_result' not in st.session_state:
+    st.session_state.github_result = None
 
 # --- Main Application UI ---
 st.title("WordPress-to-Astro Migration with Pydantic Models")
@@ -39,6 +42,7 @@ PAGES = {
     "2. TransformAgent": "page_transform", 
     "3. CMSConfigAgent": "page_cms_config",
     "4. AstroScaffoldAgent": "page_scaffold",
+    "5. GitHubAgent": "page_github",
 }
 st.sidebar.title("Agent Workflow")
 
@@ -63,6 +67,14 @@ def page_customer_ui():
         st.subheader("Target Configuration")
         repo_name = st.text_input("Repository Name", "my-astro-site")
         github_username = st.text_input("GitHub Username", "your-username")
+        
+        st.subheader("GitHub Integration")
+        github_token = st.text_input(
+            "GitHub Personal Access Token", 
+            type="password",
+            help="Create a token at: https://github.com/settings/tokens with 'repo' permissions"
+        )
+        private_repo = st.checkbox("Create private repository", value=False)
         
     with col2:
         st.subheader("Migration Preview")
@@ -95,7 +107,7 @@ def page_customer_ui():
                     cms_config = generate_cms_config(repo_info, content_structure)
                     st.session_state.cms_config = cms_config
                     
-                    # Step 4: Scaffold
+                    # Step 4: Scaffold Astro Project
                     st.info("🏗️ Creating Astro project...")
                     project_path = f"output/generated-projects/{repo_name}"
                     
@@ -112,12 +124,52 @@ def page_customer_ui():
                     )
                     st.session_state.project_scaffold = project
                     
-                    st.success("✅ Migration completed successfully!")
-                    st.balloons()
+                    # Step 5: GitHub Integration (if token provided)
+                    github_success = True  # Track overall success
+                    
+                    if github_token:
+                        st.info("🐙 Creating GitHub repository and pushing code...")
+                        try:
+                            github_result = create_github_repo(
+                                project_path=project_path,
+                                repo_name=repo_name,
+                                github_token=github_token,
+                                description=f"WordPress site migrated to Astro with Decap CMS",
+                                private=private_repo,
+                                commit_message="Initial commit: WordPress to Astro migration"
+                            )
+                            st.session_state.github_result = github_result
+                            
+                            if github_result.success:
+                                st.success(f"✅ Successfully pushed to GitHub: {github_result.repo_info.html_url}")
+                            else:
+                                st.error(f"❌ GitHub push failed: {github_result.error_message}")
+                                github_success = False
+                        except Exception as e:
+                            error_msg = str(e)
+                            if "Bad credentials" in error_msg or "401" in error_msg:
+                                st.error("❌ GitHub authentication failed: Invalid or expired token")
+                                st.info("💡 Please check your GitHub Personal Access Token:")
+                                st.info("   • Visit: https://github.com/settings/tokens")
+                                st.info("   • Ensure token has 'repo' permissions")
+                                st.info("   • Check if token is expired")
+                            else:
+                                st.error(f"❌ GitHub integration failed: {error_msg}")
+                            github_success = False
+                    else:
+                        st.info("ℹ️ Skipping GitHub integration (no token provided)")
+                    
+                    # Show appropriate completion message
+                    if github_token and not github_success:
+                        st.warning("⚠️ Migration completed with errors - Astro project created locally but GitHub push failed")
+                        st.info("💡 You can manually push the project later or check your GitHub token")
+                    else:
+                        st.success("✅ Migration completed successfully!")
+                        st.balloons()
                     
                     # Show results
                     st.subheader("📊 Migration Results")
-                    col1, col2, col3 = st.columns(3)
+                    col1, col2, col3, col4 = st.columns(4)
                     
                     with col1:
                         st.metric("Blog Posts", len(wp_content.posts))
@@ -125,9 +177,22 @@ def page_customer_ui():
                         st.metric("Pages", len(wp_content.pages))
                     with col3:
                         st.metric("Files Created", len(project.content_files) + len(project.config_files) + len(project.template_files))
+                    with col4:
+                        if github_token:
+                            if st.session_state.github_result and st.session_state.github_result.success:
+                                st.metric("Files Pushed", st.session_state.github_result.files_pushed)
+                            else:
+                                st.metric("GitHub Status", "❌ Failed", delta="Check token")
+                        else:
+                            st.metric("GitHub Status", "⏭️ Skipped", delta="No token")
                     
                     st.info(f"🎉 Your Astro site is ready at: `{project_path}`")
-                    st.info("Next steps: Deploy to GitHub and set up hosting!")
+                    
+                    if st.session_state.github_result and st.session_state.github_result.success:
+                        st.success(f"🐙 GitHub Repository: {st.session_state.github_result.repo_info.html_url}")
+                        st.info("🎯 Next steps: Set up hosting (Netlify, Vercel, etc.) and configure Decap CMS OAuth!")
+                    else:
+                        st.info("📝 Next steps: Push to GitHub and set up hosting!")
                     
                 except Exception as e:
                     st.error(f"❌ Migration failed: {str(e)}")
@@ -236,6 +301,46 @@ def page_scaffold():
     else:
         st.info("Run the migration from the Customer UI to see scaffolded project.")
 
+def page_github():
+    st.header("🐙 GitHubAgent - Repository Creation & Push")
+    
+    st.markdown("""
+    The GitHubAgent creates a GitHub repository and pushes the complete Astro project.
+    """)
+    
+    if st.session_state.github_result:
+        if st.session_state.github_result.success:
+            st.success("✅ GitHub repository created and project pushed!")
+            
+            result = st.session_state.github_result
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Files Pushed", result.files_pushed)
+            with col2:
+                st.metric("Repository", "Created")
+            
+            with st.expander("Repository Details"):
+                st.write(f"**Repository URL:** {result.repo_info.html_url}")
+                st.write(f"**Owner:** {result.repo_info.owner}")
+                st.write(f"**Repository Name:** {result.repo_info.repo_name}")
+                st.write(f"**Private:** {result.repo_info.private}")
+                if result.commit_hash:
+                    st.write(f"**Latest Commit:** {result.commit_hash[:8]}")
+                
+                st.markdown("### 🎯 Next Steps")
+                st.markdown(f"""
+                1. **Visit your repository:** [{result.repo_info.html_url}]({result.repo_info.html_url})
+                2. **Set up hosting** (Netlify, Vercel, GitHub Pages, etc.)
+                3. **Configure Decap CMS OAuth** for content management
+                4. **Customize your site** as needed
+                """)
+        else:
+            st.error("❌ GitHub push failed!")
+            st.error(f"Error: {st.session_state.github_result.error_message}")
+    else:
+        st.info("Run the migration from the Customer UI to see GitHub integration results.")
+
 # --- Page Routing ---
 def display_page(page_name):
     if page_name == "page_customer_ui":
@@ -248,6 +353,8 @@ def display_page(page_name):
         page_cms_config()
     elif page_name == "page_scaffold":
         page_scaffold()
+    elif page_name == "page_github":
+        page_github()
 
 # Display the selected page
 display_page(PAGES[selected_page])

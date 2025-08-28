@@ -81,11 +81,11 @@ The migration uses a 7-agent pipeline with built-in content sanitization:
 
 1. **ExtractionAgent** - WordPress REST API content extraction
 2. **TransformAgent** - HTML to Markdown conversion with content sanitization
-3. **MediaAgent** - Asset migration and optimization
+3. **MediaAgent** - Asset migration and optimization to Google Cloud Storage
 4. **CMSConfigAgent** - Decap CMS configuration generation
 5. **AstroScaffoldAgent** - Complete project scaffolding with validation
-6. **RepoAgent** - GitHub repository creation
-7. **DeployAgent** - Automated deployment setup
+6. **GitHubAgent** - GitHub repository creation and code push
+7. **DeployAgent** - Automated Cloudflare Pages deployment
 
 ### 🛡️ Content Sanitization
 
@@ -104,7 +104,8 @@ Create a `.env` file:
 
 ```env
 GITHUB_TOKEN=your_github_token
-CLOUDFLARE_TOKEN=your_cloudflare_token
+CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
+CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
 GOOGLE_CLOUD_CREDENTIALS=path/to/credentials.json
 ```
 

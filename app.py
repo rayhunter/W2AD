@@ -23,263 +23,9 @@ st.set_page_config(
     layout="wide",
 )
 
-# --- Custom Theme Configuration ---
-def create_compact_theme():
-    return {
-        "palette": {
-            "mode": "dark",
-            "primary": {
-                "main": "#06B6D4",  # Bright cyan
-                "light": "#22D3EE",
-                "dark": "#0891B2",
-                "contrastText": "#FFFFFF"
-            },
-            "secondary": {
-                "main": "#4F46E5",  # Deep indigo
-                "light": "#6366F1",
-                "dark": "#3730A3",
-                "contrastText": "#FFFFFF"
-            },
-            "background": {
-                "default": "#0F172A",  # Dark navy
-                "paper": "#1E293B"     # Slate gray
-            },
-            "surface": {
-                "main": "#334155"      # Medium slate
-            },
-            "text": {
-                "primary": "#F1F5F9",    # Very light blue-gray
-                "secondary": "#CBD5E1"   # Light blue-gray text
-            },
-            "divider": "#475569",        # Slate divider
-            "error": {
-                "main": "#EF4444"
-            },
-            "warning": {
-                "main": "#F59E0B"
-            },
-            "success": {
-                "main": "#10B981"
-            }
-        },
-        "typography": {
-            "fontFamily": '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-            "fontSize": 12,
-            "h1": {"fontSize": "1.8rem", "fontWeight": 600, "lineHeight": 1.2, "color": "#F1F5F9"},
-            "h2": {"fontSize": "1.5rem", "fontWeight": 600, "lineHeight": 1.3, "color": "#F1F5F9"},
-            "h3": {"fontSize": "1.3rem", "fontWeight": 500, "lineHeight": 1.4, "color": "#06B6D4"},
-            "h4": {"fontSize": "1.1rem", "fontWeight": 500, "lineHeight": 1.4, "color": "#F1F5F9"},
-            "body1": {"fontSize": "0.875rem", "lineHeight": 1.5, "color": "#CBD5E1"},
-            "body2": {"fontSize": "0.75rem", "lineHeight": 1.4, "color": "#CBD5E1"},
-            "button": {"fontSize": "0.875rem", "fontWeight": 500, "color": "#FFFFFF"},
-            "caption": {"fontSize": "0.75rem", "lineHeight": 1.4, "color": "#94A3B8"},
-        },
-        "spacing": 4,  # Tighter spacing
-        "components": {
-            "MuiButton": {
-                "styleOverrides": {
-                    "root": {
-                        "fontSize": "0.875rem", 
-                        "padding": "6px 12px",
-                        "backgroundColor": "#06B6D4",
-                        "color": "#FFFFFF",
-                        "&:hover": {
-                            "backgroundColor": "#0891B2"
-                        }
-                    }
-                }
-            },
-            "MuiPaper": {
-                "styleOverrides": {
-                    "root": {
-                        "backgroundColor": "#1E293B",
-                        "border": "1px solid #475569"
-                    }
-                }
-            }
-        }
-    }
 
-# --- Apply Global CSS for Cyan & Indigo Theme ---
-st.markdown("""
-<style>
-    /* Navy & slate theme base styles */
-    .stApp {
-        font-size: 14px;
-        background-color: #0F172A !important;
-        color: #F1F5F9 !important;
-    }
-    
-    /* Main content area */
-    .main .block-container {
-        background-color: #0F172A !important;
-        padding-top: 2rem !important;
-    }
-    
-    /* Sidebar slate theme */
-    .stSidebar > div {
-        background-color: #1E293B !important;
-        border-right: 1px solid #475569 !important;
-    }
-    
-    .stSidebar .stSelectbox label {
-        color: #CBD5E1 !important;
-        font-size: 0.875rem !important;
-    }
-    
-    /* Headers with cyan accents */
-    .stMarkdown h1 {
-        font-size: 1.8rem !important;
-        margin-bottom: 0.5rem !important;
-        color: #F1F5F9 !important;
-    }
-    
-    .stMarkdown h2 {
-        font-size: 1.5rem !important;
-        margin-bottom: 0.4rem !important;
-        color: #F1F5F9 !important;
-    }
-    
-    .stMarkdown h3 {
-        font-size: 1.3rem !important;
-        margin-bottom: 0.3rem !important;
-        color: #06B6D4 !important;
-    }
-    
-    /* Form elements slate theme */
-    .stSelectbox label, .stTextInput label, .stCheckbox label {
-        font-size: 0.875rem !important;
-        font-weight: 500 !important;
-        color: #CBD5E1 !important;
-    }
-    
-    .stSelectbox > div > div {
-        background-color: #334155 !important;
-        border: 1px solid #475569 !important;
-        color: #F1F5F9 !important;
-    }
-    
-    .stTextInput > div > div > input {
-        background-color: #334155 !important;
-        border: 1px solid #475569 !important;
-        color: #F1F5F9 !important;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: #06B6D4 !important;
-        box-shadow: 0 0 0 1px #06B6D4 !important;
-    }
-    
-    /* Buttons with cyan theme */
-    .stButton button {
-        font-size: 0.875rem !important;
-        padding: 0.4rem 1rem !important;
-        background-color: #06B6D4 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 4px !important;
-    }
-    
-    .stButton button:hover {
-        background-color: #0891B2 !important;
-        border-color: #0891B2 !important;
-    }
-    
-    /* Metrics with slate theme */
-    .stMetric {
-        background-color: #1E293B !important;
-        border: 1px solid #475569 !important;
-        border-radius: 4px !important;
-        padding: 1rem !important;
-    }
-    
-    .stMetric label {
-        font-size: 0.75rem !important;
-        color: #CBD5E1 !important;
-    }
-    
-    .stMetric [data-testid="metric-container"] > div {
-        font-size: 1.2rem !important;
-        color: #06B6D4 !important;
-        font-weight: 600 !important;
-    }
-    
-    /* Text content */
-    .stMarkdown p {
-        font-size: 0.875rem !important;
-        margin-bottom: 0.5rem !important;
-        color: #CBD5E1 !important;
-    }
-    
-    /* Success/Error/Warning messages */
-    .stSuccess {
-        background-color: #064E3B !important;
-        border: 1px solid #10B981 !important;
-        color: #10B981 !important;
-    }
-    
-    .stError {
-        background-color: #431811 !important;
-        border: 1px solid #EF4444 !important;
-        color: #EF4444 !important;
-    }
-    
-    .stWarning {
-        background-color: #451A03 !important;
-        border: 1px solid #F59E0B !important;
-        color: #F59E0B !important;
-    }
-    
-    .stInfo {
-        background-color: #0C2A56 !important;
-        border: 1px solid #06B6D4 !important;
-        color: #06B6D4 !important;
-    }
-    
-    /* Code blocks */
-    .stCode {
-        background-color: #1E293B !important;
-        border: 1px solid #475569 !important;
-    }
-    
-    /* Expanders */
-    .streamlit-expanderHeader {
-        background-color: #334155 !important;
-        color: #F1F5F9 !important;
-        border: 1px solid #475569 !important;
-    }
-    
-    .streamlit-expanderContent {
-        background-color: #1E293B !important;
-        border: 1px solid #475569 !important;
-        border-top: none !important;
-    }
-    
-    /* Compact spacing for columns */
-    .element-container {
-        margin-bottom: 0.5rem !important;
-    }
-    
-    /* Checkbox styling */
-    .stCheckbox > label {
-        color: #CBD5E1 !important;
-    }
-    
-    /* Indigo accents for secondary elements */
-    .stSidebar h1, .stSidebar h2, .stSidebar h3 {
-        color: #4F46E5 !important;
-    }
-    
-    /* Remove default Streamlit decorations */
-    header[data-testid="stHeader"] {
-        background: transparent !important;
-    }
-    
-    .stDeployButton {
-        display: none !important;
-    }
-</style>
-""", unsafe_allow_html=True)
+
+
 
 # --- Mock Data and State Initialization ---
 if 'step' not in st.session_state:
@@ -301,17 +47,16 @@ if 'deploy_result' not in st.session_state:
 
 # --- Main Application UI ---
 with elements("main_header"):
-    with mui.ThemeProvider(theme=create_compact_theme()):
-        mui.Typography(
-            "WordPress-to-Astro Migration with Pydantic Models",
-            variant="h1",
-            sx={"mb": 1}
-        )
-        mui.Typography(
-            "A demonstration of the agent-based migration pipeline.",
-            variant="body1",
-            sx={"color": "text.secondary", "mb": 2}
-        )
+    mui.Typography(
+        "WordPress-to-Astro Migration with Pydantic Models",
+        variant="h1",
+        sx={"mb": 1}
+    )
+    mui.Typography(
+        "A demonstration of the agent-based migration pipeline.",
+        variant="body1",
+        sx={"color": "text.secondary", "mb": 2}
+    )
 
 # --- Sidebar Navigation ---
 PAGES = {
@@ -325,12 +70,11 @@ PAGES = {
     "7. DeployAgent": "page_deploy",
 }
 with elements("sidebar_header"):
-    with mui.ThemeProvider(theme=create_compact_theme()):
-        mui.Typography(
-            "Agent Workflow",
-            variant="h3",
-            sx={"mb": 2, "color": "primary.main"}
-        )
+    mui.Typography(
+        "Agent Workflow",
+        variant="h3",
+        sx={"mb": 2, "color": "primary.main"}
+    )
 
 # --- Navigation ---
 selected_page = st.sidebar.selectbox(
@@ -341,34 +85,31 @@ selected_page = st.sidebar.selectbox(
 
 def page_customer_ui():
     with elements("customer_header"):
-        with mui.ThemeProvider(theme=create_compact_theme()):
-            mui.Typography(
-                "🎯 Customer Migration Interface",
-                variant="h2",
-                sx={"mb": 2}
-            )
+        mui.Typography(
+            "🎯 Customer Migration Interface",
+            variant="h2",
+            sx={"mb": 2}
+        )
     
     col1, col2 = st.columns(2)
     
     with col1:
         with elements("wp_details_header"):
-            with mui.ThemeProvider(theme=create_compact_theme()):
-                mui.Typography(
-                    "WordPress Site Details",
-                    variant="h3",
-                    sx={"mb": 1.5}
-                )
+            mui.Typography(
+                "WordPress Site Details",
+                variant="h3",
+                sx={"mb": 1.5}
+            )
         site_url = st.text_input("WordPress Site URL", "https://example.com")
         username = st.text_input("Username (optional)")
         password = st.text_input("Password (optional)", type="password")
         
         with elements("target_config_header"):
-            with mui.ThemeProvider(theme=create_compact_theme()):
-                mui.Typography(
-                    "Target Configuration",
-                    variant="h3",
-                    sx={"mb": 1.5, "mt": 2}
-                )
+            mui.Typography(
+                "Target Configuration",
+                variant="h3",
+                sx={"mb": 1.5, "mt": 2}
+            )
         repo_name = st.text_input("Repository Name", "my-astro-site")
         github_username = st.text_input("GitHub Username", "your-username")
         

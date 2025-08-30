@@ -16,9 +16,7 @@ from pydantic import BaseModel
 import subprocess
 import tempfile
 import shutil
-
-# Configure logging
-logger = logging.getLogger(__name__)
+from base_agent import BaseAgent, BaseResult, AgentStatus
 
 
 class CloudflareDeployment(BaseModel):
@@ -188,20 +186,28 @@ class CloudflareAPI:
             return {}
 
 
-class DeployAgent:
+class DeployAgent(BaseAgent):
     """Agent responsible for deploying Astro projects to Cloudflare Pages."""
     
-    def __init__(self, api_token: str, account_id: str):
+    def __init__(self, api_token: str, account_id: str, **kwargs):
         """Initialize the deployment agent.
         
         Args:
             api_token: Cloudflare API token
             account_id: Cloudflare account ID
+            **kwargs: Additional configuration passed to BaseAgent
         """
+        # Initialize base agent first
+        agent_name = kwargs.pop('name', 'DeployAgent')
+        super().__init__(name=agent_name, api_token=api_token, account_id=account_id, **kwargs)
+        
+        # Set up Cloudflare-specific configuration
         self.api_token = api_token
         self.account_id = account_id
         self.cf_api = CloudflareAPI(api_token, account_id)
-        logger.info("DeployAgent initialized")
+        
+        # Validate configuration
+        self.validate_configuration()
     
     def validate_credentials(self) -> bool:
         """Validate Cloudflare API credentials."""
@@ -431,8 +437,78 @@ class DeployAgent:
                 return False
                 
         except Exception as e:
-            logger.error(f"Error setting up custom domain: {e}")
+            self.logger.error(f"Error setting up custom domain: {e}")
             return False
+    
+    def process(self, project_name: str, github_repo: str, custom_domain: str = None, 
+               environment_variables: Dict[str, str] = None, wait_for_completion: bool = True, 
+               *args, **kwargs) -> BaseResult:
+        """Main processing method - deploys project to Cloudflare Pages.
+        
+        Args:
+            project_name: Name for the deployment project
+            github_repo: GitHub repository in format "owner/repo"
+            custom_domain: Optional custom domain
+            environment_variables: Optional environment variables
+            wait_for_completion: Whether to wait for deployment completion
+        """
+        try:
+            self.validate_input(project_name, str)
+            self.validate_input(github_repo, str)
+            
+            # Prepare deployment configuration
+            deployment_config = self.prepare_deployment_config(
+                project_name=project_name,
+                github_repo=github_repo,
+                custom_domain=custom_domain,
+                environment_variables=environment_variables
+            )
+            
+            # Deploy to Cloudflare Pages
+            result = self.deploy_to_cloudflare(
+                deployment_config=deployment_config,
+                github_repo=github_repo,
+                wait_for_deployment=wait_for_completion
+            )
+            
+            # Setup custom domain if provided and deployment was successful
+            if result.success and custom_domain:
+                domain_success = self.setup_custom_domain(
+                    deployment_config.project_name, 
+                    custom_domain
+                )
+                if domain_success:
+                    result.deployment_url = f"https://{custom_domain}"
+            
+            return BaseResult(
+                success=result.success,
+                status=AgentStatus.SUCCESS if result.success else AgentStatus.ERROR,
+                data=result,
+                message=result.message,
+                error=result.error
+            )
+            
+        except Exception as e:
+            return BaseResult(
+                success=False,
+                status=AgentStatus.ERROR,
+                error=str(e),
+                message="Failed to deploy to Cloudflare Pages"
+            )
+    
+    def validate_configuration(self) -> bool:
+        """Validate the agent's configuration."""
+        if not self.api_token:
+            raise ValueError("Cloudflare API token is required")
+        
+        if not self.account_id:
+            raise ValueError("Cloudflare account ID is required")
+        
+        # Test API connectivity
+        if not self.validate_credentials():
+            raise ValueError("Invalid Cloudflare API credentials or account access denied")
+        
+        return True
 
 
 def deploy_to_cloudflare(project_name: str, github_repo: str, 

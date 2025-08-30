@@ -10,10 +10,7 @@ import logging
 from urllib.parse import urlparse, urljoin
 from google.cloud import storage
 import json
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from base_agent import BaseAgent, BaseResult, AgentStatus
 
 class MediaFile(BaseModel):
     """Model for a media file."""
@@ -38,10 +35,10 @@ class UpdatedContentBundle(BaseModel):
     pages: List[Dict[str, Any]]
     media_bundle: MediaBundle
 
-class MediaAgent:
+class MediaAgent(BaseAgent):
     """Agent for downloading WordPress media and uploading to Google Cloud Storage."""
     
-    def __init__(self, gcs_credentials_path: str, gcs_bucket_name: str, gcs_folder: str = "wp-migration", wp_site_url: str = None):
+    def __init__(self, gcs_credentials_path: str, gcs_bucket_name: str, gcs_folder: str = "wp-migration", wp_site_url: str = None, **kwargs):
         """Initialize the media agent.
         
         Args:
@@ -49,7 +46,18 @@ class MediaAgent:
             gcs_bucket_name: Name of the GCS bucket
             gcs_folder: Folder prefix within the bucket for uploaded files
             wp_site_url: WordPress site URL for resolving attachment IDs
+            **kwargs: Additional configuration passed to BaseAgent
         """
+        # Initialize base agent first
+        agent_name = kwargs.pop('name', 'MediaAgent')
+        super().__init__(name=agent_name, 
+                        gcs_credentials_path=gcs_credentials_path,
+                        gcs_bucket_name=gcs_bucket_name,
+                        gcs_folder=gcs_folder,
+                        wp_site_url=wp_site_url,
+                        **kwargs)
+        
+        # Set up media-specific configuration
         self.gcs_credentials_path = gcs_credentials_path
         self.gcs_bucket_name = gcs_bucket_name
         self.gcs_folder = gcs_folder.strip('/')
@@ -62,10 +70,13 @@ class MediaAgent:
                 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = gcs_credentials_path
             self.storage_client = storage.Client()
             self.bucket = self.storage_client.bucket(gcs_bucket_name)
-            logger.info(f"Initialized MediaAgent with GCS bucket: {gcs_bucket_name}")
+            self.logger.info(f"Initialized MediaAgent with GCS bucket: {gcs_bucket_name}")
         except Exception as e:
-            logger.error(f"Failed to initialize GCS client: {e}")
+            self.logger.error(f"Failed to initialize GCS client: {e}")
             raise ValueError(f"GCS initialization failed: {e}")
+        
+        # Validate configuration
+        self.validate_configuration()
     
     def resolve_wp_attachment_id(self, attachment_id: str) -> Optional[str]:
         """Resolve a WordPress attachment ID to its full media URL.
@@ -80,7 +91,7 @@ class MediaAgent:
             return None
         
         try:
-            logger.debug(f"Resolving WordPress attachment ID: {attachment_id}")
+            self.logger.debug(f"Resolving WordPress attachment ID: {attachment_id}")
             response = requests.get(f"{self.wp_api_base}/media/{attachment_id}")
             response.raise_for_status()
             
@@ -88,17 +99,17 @@ class MediaAgent:
             media_url = media_data.get('source_url')
             
             if media_url:
-                logger.info(f"Resolved attachment {attachment_id} to URL: {media_url}")
+                self.logger.info(f"Resolved attachment {attachment_id} to URL: {media_url}")
                 return media_url
             else:
-                logger.warning(f"No source_url found for attachment {attachment_id}")
+                self.logger.warning(f"No source_url found for attachment {attachment_id}")
                 return None
                 
         except Exception as e:
             if "404" in str(e) or "Invalid post ID" in str(e):
-                logger.warning(f"Attachment ID {attachment_id} not found (404) - may be deleted or invalid")
+                self.logger.warning(f"Attachment ID {attachment_id} not found (404) - may be deleted or invalid")
             else:
-                logger.error(f"Failed to resolve attachment ID {attachment_id}: {e}")
+                self.logger.error(f"Failed to resolve attachment ID {attachment_id}: {e}")
             return None
     
     def get_all_available_media(self) -> Dict[str, str]:
@@ -111,7 +122,7 @@ class MediaAgent:
             return {}
         
         try:
-            logger.info("Fetching all available WordPress media...")
+            self.logger.info("Fetching all available WordPress media...")
             response = requests.get(f"{self.wp_api_base}/media", params={"per_page": 100}, timeout=30)
             response.raise_for_status()
             
@@ -142,11 +153,11 @@ class MediaAgent:
                             if len(word) > 3:  # Only meaningful words
                                 media_map[word] = media_url
             
-            logger.info(f"Retrieved {len(media_items)} media items, created {len(media_map)} keyword mappings")
+            self.logger.info(f"Retrieved {len(media_items)} media items, created {len(media_map)} keyword mappings")
             return media_map
             
         except Exception as e:
-            logger.error(f"Error fetching all media: {e}")
+            self.logger.error(f"Error fetching all media: {e}")
             return {}
     
     def intelligent_attachment_resolution(self, attachment_id: str, context: str = "") -> Optional[str]:
@@ -522,8 +533,61 @@ class MediaAgent:
             media_bundle=media_bundle
         )
         
-        logger.info(f"Media migration completed: {media_bundle.successful_uploads} files uploaded to GCS")
+        self.logger.info(f"Media migration completed: {media_bundle.successful_uploads} files uploaded to GCS")
         return bundle
+    
+    def process_media_from_content_with_metrics(self, posts: List[Dict], pages: List[Dict]) -> MediaBundle:
+        """Process and upload all media from posts and pages with metrics tracking."""
+        return self._execute_with_metrics("process_media_from_content", self.process_media_from_content, posts, pages).data
+    
+    def process(self, posts: List[Dict] = None, pages: List[Dict] = None, *args, **kwargs) -> BaseResult:
+        """Main processing method - processes media migration from posts and pages.
+        
+        Args:
+            posts: List of post dictionaries with content
+            pages: List of page dictionaries with content
+        """
+        try:
+            if posts is None:
+                posts = []
+            if pages is None:
+                pages = []
+                
+            self.validate_input(posts, list)
+            self.validate_input(pages, list)
+            
+            bundle = self.process_content_bundle(posts, pages)
+            
+            return BaseResult(
+                success=True,
+                status=AgentStatus.SUCCESS,
+                data=bundle,
+                message=f"Successfully processed {bundle.media_bundle.successful_uploads} media files"
+            )
+        except Exception as e:
+            return BaseResult(
+                success=False,
+                status=AgentStatus.ERROR,
+                error=str(e),
+                message="Failed to process media migration"
+            )
+    
+    def validate_configuration(self) -> bool:
+        """Validate the agent's configuration."""
+        if not self.gcs_credentials_path:
+            raise ValueError("GCS credentials path is required")
+        
+        if not self.gcs_bucket_name:
+            raise ValueError("GCS bucket name is required")
+        
+        # Test GCS connectivity
+        try:
+            # Try to list objects (with limit 1 to minimize impact)
+            list(self.bucket.list_blobs(max_results=1))
+        except Exception as e:
+            raise ValueError(f"Cannot access GCS bucket '{self.gcs_bucket_name}': {str(e)}")
+        
+        return True
 
 def process_media_migration(
     posts: List[Dict],

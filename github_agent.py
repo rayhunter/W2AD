@@ -7,10 +7,7 @@ from pydantic import BaseModel
 import logging
 from github import Github, GithubException
 import git
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from base_agent import BaseAgent, BaseResult, AgentStatus
 
 class GitHubRepoInfo(BaseModel):
     """Model for GitHub repository information."""
@@ -37,15 +34,21 @@ class GitHubCloneResult(BaseModel):
     local_path: str = ""
     error_message: Optional[str] = None
 
-class GitHubAgent:
+class GitHubAgent(BaseAgent):
     """Agent for creating GitHub repositories and pushing Astro projects."""
     
-    def __init__(self, github_token: str):
+    def __init__(self, github_token: str, **kwargs):
         """Initialize the GitHub agent.
         
         Args:
             github_token: Personal access token for GitHub API
+            **kwargs: Additional configuration passed to BaseAgent
         """
+        # Initialize base agent first
+        agent_name = kwargs.pop('name', 'GitHubAgent')
+        super().__init__(name=agent_name, github_token=github_token, **kwargs)
+        
+        # Set up GitHub-specific configuration
         if not github_token:
             raise ValueError("GitHub token is required")
             
@@ -55,10 +58,13 @@ class GitHubAgent:
         # Verify token and get user info
         try:
             self.user = self.github_client.get_user()
-            logger.info(f"Authenticated as GitHub user: {self.user.login}")
+            self.logger.info(f"Authenticated as GitHub user: {self.user.login}")
         except GithubException as e:
-            logger.error(f"GitHub authentication failed: {e}")
+            self.logger.error(f"GitHub authentication failed: {e}")
             raise ValueError(f"Invalid GitHub token: {e}")
+        
+        # Validate configuration
+        self.validate_configuration()
     
     def create_repository(self, repo_name: str, description: str = None, private: bool = False) -> GitHubRepoInfo:
         """Create a new GitHub repository.
@@ -492,6 +498,69 @@ Built with ❤️ using Astro and Decap CMS.
                 error_message=error_details,
                 files_pushed=0
             )
+    
+    def process(self, repo_name: str, project_path: str = None, description: str = None, 
+               private: bool = False, commit_message: str = None, *args, **kwargs) -> BaseResult:
+        """Main processing method - creates GitHub repository and optionally pushes project.
+        
+        Args:
+            repo_name: Name of the repository to create
+            project_path: Optional path to project directory to push
+            description: Repository description
+            private: Whether the repository should be private
+            commit_message: Custom commit message
+        """
+        try:
+            self.validate_input(repo_name, str)
+            
+            if project_path:
+                # Create repository and push project
+                result = self.create_and_push_project(
+                    Path(project_path),
+                    repo_name,
+                    description,
+                    private,
+                    commit_message
+                )
+                
+                return BaseResult(
+                    success=result.success,
+                    status=AgentStatus.SUCCESS if result.success else AgentStatus.ERROR,
+                    data=result,
+                    message=f"Successfully created and pushed to {result.repo_info.html_url}" if result.success else "Failed to create/push repository",
+                    error=result.error_message if not result.success else None
+                )
+            else:
+                # Just create repository
+                repo_info = self.create_repository(repo_name, description, private)
+                
+                return BaseResult(
+                    success=True,
+                    status=AgentStatus.SUCCESS,
+                    data=repo_info,
+                    message=f"Successfully created repository: {repo_info.html_url}"
+                )
+                
+        except Exception as e:
+            return BaseResult(
+                success=False,
+                status=AgentStatus.ERROR,
+                error=str(e),
+                message="Failed to process GitHub repository operation"
+            )
+    
+    def validate_configuration(self) -> bool:
+        """Validate the agent's configuration."""
+        if not self.github_token:
+            raise ValueError("GitHub token is required")
+        
+        # Test GitHub API connectivity
+        try:
+            self.user.login  # Simple API test
+        except Exception as e:
+            raise ValueError(f"GitHub API access failed: {str(e)}")
+        
+        return True
 
 def create_github_repo(
     project_path: str,

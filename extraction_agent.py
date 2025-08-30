@@ -3,8 +3,7 @@ from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 import logging
 from datetime import datetime
-
-logger = logging.getLogger(__name__)
+from base_agent import BaseAgent, BaseResult, AgentStatus
 
 class WPPost(BaseModel):
     """Model for a WordPress post."""
@@ -36,106 +35,118 @@ class WPContentBundle(BaseModel):
     media: List[Dict[str, Any]] = []
     site_info: Dict[str, Any] = {}
 
-class ExtractionAgent:
+class ExtractionAgent(BaseAgent):
     """Agent for extracting content from WordPress sites via REST API."""
     
-    def __init__(self, site_url: str, username: str = None, password: str = None):
+    def __init__(self, site_url: str, username: str = None, password: str = None, **kwargs):
         """Initialize the extraction agent.
         
         Args:
             site_url: WordPress site URL
             username: Optional username for authentication
             password: Optional password for authentication
+            **kwargs: Additional configuration passed to BaseAgent
         """
+        # Initialize base agent first
+        agent_name = kwargs.pop('name', 'ExtractionAgent')
+        super().__init__(name=agent_name, site_url=site_url, username=username, **kwargs)
+        
+        # Set up WordPress-specific configuration
         self.site_url = site_url.rstrip('/')
         self.api_base = f"{self.site_url}/wp-json/wp/v2"
         self.auth = (username, password) if username and password else None
-        logger.info(f"Initialized ExtractionAgent for {site_url}")
+        
+        # Validate configuration
+        self.validate_configuration()
     
     def extract_posts(self, per_page: int = 100) -> List[WPPost]:
         """Extract blog posts from WordPress."""
-        logger.info("Extracting WordPress posts...")
+        return self._execute_with_metrics("extract_posts", self._extract_posts_impl, per_page).data or []
+    
+    def _extract_posts_impl(self, per_page: int = 100) -> List[WPPost]:
+        """Implementation of post extraction."""
+        self.logger.info("Extracting WordPress posts...")
         
-        try:
-            response = requests.get(
-                f"{self.api_base}/posts",
-                params={"per_page": per_page, "status": "publish"},
-                auth=self.auth
+        response = requests.get(
+            f"{self.api_base}/posts",
+            params={"per_page": per_page, "status": "publish"},
+            auth=self.auth,
+            timeout=30
+        )
+        response.raise_for_status()
+        
+        posts_data = response.json()
+        posts = []
+        
+        for post_data in posts_data:
+            post = WPPost(
+                id=post_data["id"],
+                title=post_data["title"]["rendered"],
+                content=post_data["content"]["rendered"],
+                excerpt=post_data["excerpt"]["rendered"],
+                date=post_data["date"],
+                slug=post_data["slug"],
+                status=post_data["status"],
+                categories=[],  # Would need additional API calls to populate
+                tags=[],        # Would need additional API calls to populate
+                featured_media=post_data.get("featured_media")
             )
-            response.raise_for_status()
-            
-            posts_data = response.json()
-            posts = []
-            
-            for post_data in posts_data:
-                post = WPPost(
-                    id=post_data["id"],
-                    title=post_data["title"]["rendered"],
-                    content=post_data["content"]["rendered"],
-                    excerpt=post_data["excerpt"]["rendered"],
-                    date=post_data["date"],
-                    slug=post_data["slug"],
-                    status=post_data["status"],
-                    categories=[],  # Would need additional API calls to populate
-                    tags=[],        # Would need additional API calls to populate
-                    featured_media=post_data.get("featured_media")
-                )
-                posts.append(post)
-            
-            logger.info(f"Extracted {len(posts)} posts")
-            return posts
-            
-        except Exception as e:
-            logger.error(f"Failed to extract posts: {str(e)}")
-            return []
+            posts.append(post)
+        
+        self.logger.info(f"Extracted {len(posts)} posts")
+        return posts
     
     def extract_pages(self, per_page: int = 100) -> List[WPPage]:
         """Extract pages from WordPress."""
-        logger.info("Extracting WordPress pages...")
+        return self._execute_with_metrics("extract_pages", self._extract_pages_impl, per_page).data or []
+    
+    def _extract_pages_impl(self, per_page: int = 100) -> List[WPPage]:
+        """Implementation of page extraction."""
+        self.logger.info("Extracting WordPress pages...")
         
-        try:
-            response = requests.get(
-                f"{self.api_base}/pages",
-                params={"per_page": per_page, "status": "publish"},
-                auth=self.auth
+        response = requests.get(
+            f"{self.api_base}/pages",
+            params={"per_page": per_page, "status": "publish"},
+            auth=self.auth,
+            timeout=30
+        )
+        response.raise_for_status()
+        
+        pages_data = response.json()
+        pages = []
+        
+        for page_data in pages_data:
+            page = WPPage(
+                id=page_data["id"],
+                title=page_data["title"]["rendered"],
+                content=page_data["content"]["rendered"],
+                date=page_data["date"],
+                slug=page_data["slug"],
+                status=page_data["status"],
+                featured_media=page_data.get("featured_media")
             )
-            response.raise_for_status()
-            
-            pages_data = response.json()
-            pages = []
-            
-            for page_data in pages_data:
-                page = WPPage(
-                    id=page_data["id"],
-                    title=page_data["title"]["rendered"],
-                    content=page_data["content"]["rendered"],
-                    date=page_data["date"],
-                    slug=page_data["slug"],
-                    status=page_data["status"],
-                    featured_media=page_data.get("featured_media")
-                )
-                pages.append(page)
-            
-            logger.info(f"Extracted {len(pages)} pages")
-            return pages
-            
-        except Exception as e:
-            logger.error(f"Failed to extract pages: {str(e)}")
-            return []
+            pages.append(page)
+        
+        self.logger.info(f"Extracted {len(pages)} pages")
+        return pages
     
     def extract_site_info(self) -> Dict[str, Any]:
         """Extract site information."""
-        try:
-            response = requests.get(f"{self.site_url}/wp-json")
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Failed to extract site info: {str(e)}")
-            return {}
+        return self._execute_with_metrics("extract_site_info", self._extract_site_info_impl).data or {}
+    
+    def _extract_site_info_impl(self) -> Dict[str, Any]:
+        """Implementation of site info extraction."""
+        response = requests.get(f"{self.site_url}/wp-json", timeout=30)
+        response.raise_for_status()
+        return response.json()
     
     def extract_all(self) -> WPContentBundle:
         """Extract all content from the WordPress site."""
-        logger.info("Starting full content extraction...")
+        return self._execute_with_metrics("extract_all", self._extract_all_impl).data
+    
+    def _extract_all_impl(self) -> WPContentBundle:
+        """Implementation of full content extraction."""
+        self.logger.info("Starting full content extraction...")
         
         posts = self.extract_posts()
         pages = self.extract_pages()
@@ -147,8 +158,44 @@ class ExtractionAgent:
             site_info=site_info
         )
         
-        logger.info(f"Extraction completed: {len(posts)} posts, {len(pages)} pages")
+        self.logger.info(f"Extraction completed: {len(posts)} posts, {len(pages)} pages")
         return bundle
+    
+    def process(self, *args, **kwargs) -> BaseResult:
+        """Main processing method - extracts all content from WordPress."""
+        try:
+            bundle = self.extract_all()
+            return BaseResult(
+                success=True,
+                status=AgentStatus.SUCCESS,
+                data=bundle,
+                message=f"Successfully extracted {len(bundle.posts)} posts and {len(bundle.pages)} pages"
+            )
+        except Exception as e:
+            return BaseResult(
+                success=False,
+                status=AgentStatus.ERROR,
+                error=str(e),
+                message="Failed to extract WordPress content"
+            )
+    
+    def validate_configuration(self) -> bool:
+        """Validate the agent's configuration."""
+        if not self.site_url:
+            raise ValueError("Site URL is required")
+        
+        if not self.site_url.startswith(('http://', 'https://')):
+            raise ValueError("Site URL must start with http:// or https://")
+        
+        # Test connection to WordPress API
+        try:
+            response = requests.head(f"{self.api_base}", timeout=10)
+            if response.status_code >= 400:
+                raise ValueError(f"WordPress API not accessible at {self.api_base}")
+        except requests.RequestException as e:
+            raise ValueError(f"Cannot connect to WordPress API: {str(e)}")
+        
+        return True
 
 def extract_from_wordpress(site_url: str, username: str = None, password: str = None) -> WPContentBundle:
     """Extract content from a WordPress site.

@@ -7,10 +7,7 @@ from typing import Dict, List, Any
 from pydantic import BaseModel
 import logging
 import shutil
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from base_agent import BaseAgent, BaseResult, AgentStatus
 
 class ProjectStructure(BaseModel):
     """Model representing the Astro project structure."""
@@ -19,17 +16,22 @@ class ProjectStructure(BaseModel):
     config_files: List[str] = []
     template_files: List[str] = []
 
-class AstroScaffoldAgent:
+class AstroScaffoldAgent(BaseAgent):
     """Agent for scaffolding an Astro project with Decap CMS integration."""
     
-    def __init__(self, project_root: str, content: Dict[str, List[Dict[str, str]]], cms_config: Dict[str, Any]):
+    def __init__(self, project_root: str, content: Dict[str, List[Dict[str, str]]], cms_config: Dict[str, Any], **kwargs):
         """Initialize the scaffold agent.
         
         Args:
             project_root: Root directory for the new project
             content: Dictionary containing posts and pages content
             cms_config: Decap CMS configuration
+            **kwargs: Additional configuration passed to BaseAgent
         """
+        # Initialize base agent first
+        agent_name = kwargs.pop('name', 'AstroScaffoldAgent')
+        super().__init__(name=agent_name, project_root=project_root, content=content, cms_config=cms_config, **kwargs)
+        
         # Validate content structure
         if not all(key in content for key in ["posts", "pages"]):
             raise ValueError("Content must contain 'posts' and 'pages' keys")
@@ -38,7 +40,9 @@ class AstroScaffoldAgent:
         self.content = content
         self.cms_config = cms_config
         self.project_structure = ProjectStructure(project_root=str(project_root))
-        logger.info(f"Initialized AstroScaffoldAgent for {project_root}")
+        
+        # Validate configuration
+        self.validate_configuration()
         
     def create_directory_structure(self):
         """Create the basic Astro project directory structure."""
@@ -455,8 +459,64 @@ const posts = await getCollection('blog');
         self.create_package_json()
         self.create_templates()
         
-        logger.info("Project scaffolding completed")
+        self.logger.info("Project scaffolding completed")
         return self.project_structure
+    
+    def scaffold_project_with_metrics(self) -> ProjectStructure:
+        """Execute scaffolding with metrics tracking."""
+        return self._execute_with_metrics("scaffold_project", self.scaffold_project).data
+    
+    def process(self, *args, **kwargs) -> BaseResult:
+        """Main processing method - scaffolds the complete Astro project."""
+        try:
+            project_structure = self.scaffold_project()
+            
+            total_files = (
+                len(project_structure.content_files) +
+                len(project_structure.config_files) + 
+                len(project_structure.template_files)
+            )
+            
+            return BaseResult(
+                success=True,
+                status=AgentStatus.SUCCESS,
+                data=project_structure,
+                message=f"Successfully scaffolded Astro project with {total_files} files in {self.project_root}"
+            )
+        except Exception as e:
+            return BaseResult(
+                success=False,
+                status=AgentStatus.ERROR,
+                error=str(e),
+                message="Failed to scaffold Astro project"
+            )
+    
+    def validate_configuration(self) -> bool:
+        """Validate the agent's configuration."""
+        if not self.project_root:
+            raise ValueError("Project root directory is required")
+        
+        if not self.content:
+            raise ValueError("Content dictionary is required")
+        
+        if not isinstance(self.content, dict):
+            raise ValueError("Content must be a dictionary")
+        
+        if not all(key in self.content for key in ["posts", "pages"]):
+            raise ValueError("Content must contain 'posts' and 'pages' keys")
+        
+        if not self.cms_config:
+            raise ValueError("CMS configuration is required")
+        
+        # Check if project root parent directory exists and is writable
+        parent_dir = self.project_root.parent
+        if not parent_dir.exists():
+            raise ValueError(f"Parent directory does not exist: {parent_dir}")
+        
+        if not os.access(parent_dir, os.W_OK):
+            raise ValueError(f"Parent directory is not writable: {parent_dir}")
+        
+        return True
 
 def create_astro_project(
     project_root: str,

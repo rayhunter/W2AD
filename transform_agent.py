@@ -4,8 +4,7 @@ from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 import logging
 from datetime import datetime
-
-logger = logging.getLogger(__name__)
+from base_agent import BaseAgent, BaseResult, AgentStatus
 
 class MarkdownPost(BaseModel):
     """Model for a transformed markdown post."""
@@ -30,16 +29,27 @@ class StaticContentBundle(BaseModel):
     posts: List[MarkdownPost]
     pages: List[MarkdownPage]
 
-class TransformAgent:
+class TransformAgent(BaseAgent):
     """Agent for transforming WordPress content to Astro-compatible format."""
     
-    def __init__(self):
-        """Initialize the transform agent."""
+    def __init__(self, **kwargs):
+        """Initialize the transform agent.
+        
+        Args:
+            **kwargs: Additional configuration passed to BaseAgent
+        """
+        # Initialize base agent first
+        agent_name = kwargs.pop('name', 'TransformAgent')
+        super().__init__(name=agent_name, **kwargs)
+        
+        # Set up HTML converter
         self.html_converter = html2text.HTML2Text()
         self.html_converter.ignore_links = False
         self.html_converter.ignore_images = False
         self.html_converter.body_width = 0
-        logger.info("Initialized TransformAgent")
+        
+        # Validate configuration
+        self.validate_configuration()
     
     def clean_html_content(self, html_content: str) -> str:
         """Clean and prepare HTML content for conversion."""
@@ -191,15 +201,47 @@ class TransformAgent:
     
     def transform_bundle(self, wp_bundle) -> StaticContentBundle:
         """Transform a complete WordPress content bundle."""
-        logger.info("Transforming WordPress content to markdown...")
+        return self._execute_with_metrics("transform_bundle", self._transform_bundle_impl, wp_bundle).data
+    
+    def _transform_bundle_impl(self, wp_bundle) -> StaticContentBundle:
+        """Implementation of bundle transformation."""
+        self.logger.info("Transforming WordPress content to markdown...")
         
         posts = [self.transform_post(post) for post in wp_bundle.posts]
         pages = [self.transform_page(page) for page in wp_bundle.pages]
         
         bundle = StaticContentBundle(posts=posts, pages=pages)
-        logger.info(f"Transformed {len(posts)} posts and {len(pages)} pages")
+        self.logger.info(f"Transformed {len(posts)} posts and {len(pages)} pages")
         
         return bundle
+    
+    def process(self, wp_bundle, *args, **kwargs) -> BaseResult:
+        """Main processing method - transforms WordPress content to markdown."""
+        try:
+            self.validate_input(wp_bundle)
+            bundle = self.transform_bundle(wp_bundle)
+            
+            return BaseResult(
+                success=True,
+                status=AgentStatus.SUCCESS,
+                data=bundle,
+                message=f"Successfully transformed {len(bundle.posts)} posts and {len(bundle.pages)} pages"
+            )
+        except Exception as e:
+            return BaseResult(
+                success=False,
+                status=AgentStatus.ERROR,
+                error=str(e),
+                message="Failed to transform WordPress content"
+            )
+    
+    def validate_configuration(self) -> bool:
+        """Validate the agent's configuration."""
+        # TransformAgent doesn't require external dependencies, so basic validation
+        if not hasattr(self, 'html_converter'):
+            raise ValueError("HTML converter not initialized")
+        
+        return True
 
 def transform_bundle(wp_bundle) -> StaticContentBundle:
     """Transform WordPress content bundle to static content.

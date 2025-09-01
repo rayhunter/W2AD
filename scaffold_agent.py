@@ -60,7 +60,7 @@ class AstroScaffoldAgent(BaseAgent):
         for dir_path in directories:
             full_path = self.project_root / dir_path
             full_path.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Created directory: {full_path}")
+            self.logger.info(f"Created directory: {full_path}")
             
     def validate_and_sanitize_content(self, content: str) -> str:
         """Validate and sanitize markdown content to prevent module import errors.
@@ -88,7 +88,7 @@ class AstroScaffoldAgent(BaseAgent):
             content
         )
         
-        logger.debug("Content sanitized to prevent module import errors")
+        self.logger.debug("Content sanitized to prevent module import errors")
         return content
     
     def create_content_files(self):
@@ -102,7 +102,7 @@ class AstroScaffoldAgent(BaseAgent):
             sanitized_content = self.validate_and_sanitize_content(post["content"])
             file_path.write_text(sanitized_content)
             self.project_structure.content_files.append(str(file_path))
-            logger.info(f"Created post: {file_path}")
+            self.logger.info(f"Created post: {file_path}")
             
         # Create pages
         for page in self.content["pages"]:
@@ -113,7 +113,7 @@ class AstroScaffoldAgent(BaseAgent):
             sanitized_content = self.validate_and_sanitize_content(page["content"])
             file_path.write_text(sanitized_content)
             self.project_structure.content_files.append(str(file_path))
-            logger.info(f"Created page: {file_path}")
+            self.logger.info(f"Created page: {file_path}")
             
     def create_astro_config(self):
         """Create Astro configuration files."""
@@ -128,7 +128,7 @@ export default defineConfig({
         config_path = self.project_root / "astro.config.mjs"
         config_path.write_text(config_content)
         self.project_structure.config_files.append(str(config_path))
-        logger.info(f"Created Astro config: {config_path}")
+        self.logger.info(f"Created Astro config: {config_path}")
         
         # tsconfig.json
         tsconfig_content = """{
@@ -142,7 +142,7 @@ export default defineConfig({
         tsconfig_path = self.project_root / "tsconfig.json"
         tsconfig_path.write_text(tsconfig_content)
         self.project_structure.config_files.append(str(tsconfig_path))
-        logger.info(f"Created TypeScript config: {tsconfig_path}")
+        self.logger.info(f"Created TypeScript config: {tsconfig_path}")
         
     def create_cms_config(self):
         """Create Decap CMS configuration file."""
@@ -189,7 +189,7 @@ export default defineConfig({
         admin_path.write_text(admin_html)
         
         self.project_structure.config_files.extend([str(config_path), str(admin_path)])
-        logger.info(f"Created CMS config: {config_path}")
+        self.logger.info(f"Created CMS config: {config_path}")
         
         # If OAuth app was created, save credentials for reference
         if hasattr(self.cms_config, 'oauth_app') and self.cms_config.oauth_app:
@@ -197,7 +197,7 @@ export default defineConfig({
             with open(oauth_path, 'w') as f:
                 json.dump(self.cms_config.oauth_app.model_dump(), f, indent=2)
             self.project_structure.config_files.append(str(oauth_path))
-            logger.info(f"Saved OAuth config: {oauth_path}")
+            self.logger.info(f"Saved OAuth config: {oauth_path}")
         
     def create_package_json(self):
         """Create package.json with necessary dependencies."""
@@ -224,7 +224,7 @@ export default defineConfig({
             json.dump(package_content, f, indent=2)
             
         self.project_structure.config_files.append(str(package_path))
-        logger.info(f"Created package.json: {package_path}")
+        self.logger.info(f"Created package.json: {package_path}")
         
     def create_templates(self):
         """Create Astro template files."""
@@ -442,7 +442,7 @@ const posts = await getCollection('blog');
             str(homepage_path),
             str(pages_gitkeep)
         ])
-        logger.info(f"Created template files in {self.project_root / 'src/layouts'} and {self.project_root / 'src/pages'}")
+        self.logger.info(f"Created template files in {self.project_root / 'src/layouts'} and {self.project_root / 'src/pages'}")
         
     def scaffold_project(self) -> ProjectStructure:
         """Execute the complete scaffolding process.
@@ -450,7 +450,7 @@ const posts = await getCollection('blog');
         Returns:
             ProjectStructure object containing all created files
         """
-        logger.info(f"Starting project scaffolding in {self.project_root}")
+        self.logger.info(f"Starting project scaffolding in {self.project_root}")
         
         self.create_directory_structure()
         self.create_content_files()

@@ -81,7 +81,7 @@ class GitHubAgent(BaseAgent):
             # Check if repository already exists
             try:
                 existing_repo = self.user.get_repo(repo_name)
-                logger.warning(f"Repository {repo_name} already exists")
+                self.logger.warning(f"Repository {repo_name} already exists")
                 return GitHubRepoInfo(
                     owner=self.user.login,
                     repo_name=repo_name,
@@ -95,7 +95,7 @@ class GitHubAgent(BaseAgent):
                 pass  # Repository doesn't exist, continue with creation
             
             # Create the repository
-            logger.info(f"Creating GitHub repository: {repo_name}")
+            self.logger.info(f"Creating GitHub repository: {repo_name}")
             repo = self.user.create_repo(
                 name=repo_name,
                 description=description or "WordPress site migrated to Astro with Decap CMS",
@@ -115,11 +115,11 @@ class GitHubAgent(BaseAgent):
                 html_url=repo.html_url
             )
             
-            logger.info(f"Successfully created repository: {repo.html_url}")
+            self.logger.info(f"Successfully created repository: {repo.html_url}")
             return repo_info
             
         except GithubException as e:
-            logger.error(f"Failed to create repository: {e}")
+            self.logger.error(f"Failed to create repository: {e}")
             raise RuntimeError(f"GitHub repository creation failed: {e}")
     
     def create_and_clone_repository(self, repo_name: str, local_path: Path, description: str = None, private: bool = False) -> GitHubCloneResult:
@@ -144,7 +144,7 @@ class GitHubAgent(BaseAgent):
                 shutil.rmtree(local_path)
             
             # Clone the repository
-            logger.info(f"Cloning repository to: {local_path}")
+            self.logger.info(f"Cloning repository to: {local_path}")
             clone_url = f"https://{self.github_token}@github.com/{repo_info.owner}/{repo_info.repo_name}.git"
             
             # Clone the repository
@@ -183,9 +183,9 @@ The Astro project files will be added by the migration tool.
                 repo.index.commit("Initial commit: Add README")
                 repo.remotes.origin.push()
                 
-                logger.info("Created and committed initial README")
+                self.logger.info("Created and committed initial README")
             
-            logger.info(f"Successfully cloned repository to: {local_path}")
+            self.logger.info(f"Successfully cloned repository to: {local_path}")
             
             return GitHubCloneResult(
                 success=True,
@@ -194,7 +194,7 @@ The Astro project files will be added by the migration tool.
             )
             
         except Exception as e:
-            logger.error(f"Failed to create and clone repository: {e}")
+            self.logger.error(f"Failed to create and clone repository: {e}")
             return GitHubCloneResult(
                 success=False,
                 repo_info=GitHubRepoInfo(owner="", repo_name=repo_name),
@@ -213,7 +213,7 @@ The Astro project files will be added by the migration tool.
         """
         try:
             # Initialize git repository
-            logger.info(f"Initializing Git repository in {project_path}")
+            self.logger.info(f"Initializing Git repository in {project_path}")
             repo = git.Repo.init(project_path)
             
             # Create .gitignore file
@@ -376,7 +376,7 @@ Built with ❤️ using Astro and Decap CMS.
             return repo
             
         except Exception as e:
-            logger.error(f"Failed to initialize Git repository: {e}")
+            self.logger.error(f"Failed to initialize Git repository: {e}")
             raise RuntimeError(f"Git initialization failed: {e}")
     
     def push_to_github(self, project_path: Path, repo_info: GitHubRepoInfo, commit_message: str = None) -> GitHubPushResult:
@@ -404,14 +404,14 @@ Built with ❤️ using Astro and Decap CMS.
                 pass
             
             origin = repo.create_remote('origin', origin_url)
-            logger.info(f"Added remote origin: {repo_info.html_url}")
+            self.logger.info(f"Added remote origin: {repo_info.html_url}")
             
             # Add all files
             repo.git.add('.')
             
             # Count files to be committed
             files_to_commit = len(list(project_path.rglob('*')))
-            logger.info(f"Adding {files_to_commit} files to Git")
+            self.logger.info(f"Adding {files_to_commit} files to Git")
             
             # Create initial commit
             default_message = f"Initial commit: WordPress to Astro migration"
@@ -419,10 +419,10 @@ Built with ❤️ using Astro and Decap CMS.
             
             try:
                 commit = repo.index.commit(commit_msg)
-                logger.info(f"Created commit: {commit.hexsha[:8]} - {commit_msg}")
+                self.logger.info(f"Created commit: {commit.hexsha[:8]} - {commit_msg}")
             except Exception as e:
                 if "nothing to commit" in str(e):
-                    logger.warning("No changes to commit")
+                    self.logger.warning("No changes to commit")
                     return GitHubPushResult(
                         success=True,
                         repo_info=repo_info,
@@ -433,10 +433,10 @@ Built with ❤️ using Astro and Decap CMS.
                     raise e
             
             # Push to GitHub
-            logger.info("Pushing to GitHub...")
+            self.logger.info("Pushing to GitHub...")
             origin.push(refspec='HEAD:main')
             
-            logger.info(f"Successfully pushed to GitHub: {repo_info.html_url}")
+            self.logger.info(f"Successfully pushed to GitHub: {repo_info.html_url}")
             
             return GitHubPushResult(
                 success=True,
@@ -446,7 +446,7 @@ Built with ❤️ using Astro and Decap CMS.
             )
             
         except Exception as e:
-            logger.error(f"Failed to push to GitHub: {e}")
+            self.logger.error(f"Failed to push to GitHub: {e}")
             return GitHubPushResult(
                 success=False,
                 repo_info=repo_info,
@@ -482,16 +482,16 @@ Built with ❤️ using Astro and Decap CMS.
             result = self.push_to_github(project_path, repo_info, commit_message)
             
             if result.success:
-                logger.info(f"✅ Successfully created and pushed to: {repo_info.html_url}")
+                self.logger.info(f"✅ Successfully created and pushed to: {repo_info.html_url}")
             else:
-                logger.error(f"❌ Failed to push project: {result.error_message}")
+                self.logger.error(f"❌ Failed to push project: {result.error_message}")
             
             return result
             
         except Exception as e:
             error_details = f"Type: {type(e).__name__}, Message: {str(e) if str(e) else 'No message'}"
-            logger.error(f"Failed to create and push project: {error_details}")
-            logger.exception("Full stack trace:")  # This will log the full traceback
+            self.logger.error(f"Failed to create and push project: {error_details}")
+            self.logger.exception("Full stack trace:")  # This will log the full traceback
             return GitHubPushResult(
                 success=False,
                 repo_info=GitHubRepoInfo(owner="", repo_name=repo_name),

@@ -67,7 +67,7 @@ class CloudflareAPI:
             response = self.session.get(f"{self.base_url}/accounts/{self.account_id}")
             return response.status_code == 200
         except Exception as e:
-            logger.error(f"Failed to test Cloudflare credentials: {e}")
+            self.logger.error(f"Failed to test Cloudflare credentials: {e}")
             return False
     
     def list_pages_projects(self) -> List[Dict[str, Any]]:
@@ -79,7 +79,7 @@ class CloudflareAPI:
             response.raise_for_status()
             return response.json().get("result", [])
         except Exception as e:
-            logger.error(f"Failed to list Pages projects: {e}")
+            self.logger.error(f"Failed to list Pages projects: {e}")
             return []
     
     def create_pages_project(self, deployment_config: CloudflareDeployment, 
@@ -145,7 +145,7 @@ class CloudflareAPI:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            logger.error(f"Failed to create Pages project: {e}")
+            self.logger.error(f"Failed to create Pages project: {e}")
             raise
     
     def get_project_details(self, project_name: str) -> Optional[Dict[str, Any]]:
@@ -158,7 +158,7 @@ class CloudflareAPI:
                 return response.json().get("result")
             return None
         except Exception as e:
-            logger.error(f"Failed to get project details: {e}")
+            self.logger.error(f"Failed to get project details: {e}")
             return None
     
     def trigger_deployment(self, project_name: str) -> Dict[str, Any]:
@@ -170,7 +170,7 @@ class CloudflareAPI:
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            logger.error(f"Failed to trigger deployment: {e}")
+            self.logger.error(f"Failed to trigger deployment: {e}")
             raise
     
     def get_deployment_status(self, project_name: str, deployment_id: str) -> Dict[str, Any]:
@@ -182,7 +182,7 @@ class CloudflareAPI:
             response.raise_for_status()
             return response.json().get("result", {})
         except Exception as e:
-            logger.error(f"Failed to get deployment status: {e}")
+            self.logger.error(f"Failed to get deployment status: {e}")
             return {}
 
 
@@ -211,7 +211,7 @@ class DeployAgent(BaseAgent):
     
     def validate_credentials(self) -> bool:
         """Validate Cloudflare API credentials."""
-        logger.info("Validating Cloudflare credentials...")
+        self.logger.info("Validating Cloudflare credentials...")
         return self.cf_api.test_credentials()
     
     def prepare_deployment_config(self, project_name: str, 
@@ -253,7 +253,7 @@ class DeployAgent(BaseAgent):
             compatibility_flags=[]
         )
         
-        logger.info(f"Prepared deployment config for project: {sanitized_name}")
+        self.logger.info(f"Prepared deployment config for project: {sanitized_name}")
         return config
     
     def sanitize_project_name(self, name: str) -> str:
@@ -303,20 +303,20 @@ class DeployAgent(BaseAgent):
             DeploymentResult with deployment details
         """
         try:
-            logger.info(f"Starting deployment to Cloudflare Pages: {deployment_config.project_name}")
+            self.logger.info(f"Starting deployment to Cloudflare Pages: {deployment_config.project_name}")
             
             # Check if project already exists
             existing_project = self.cf_api.get_project_details(deployment_config.project_name)
             
             if existing_project:
-                logger.info(f"Project {deployment_config.project_name} already exists, triggering new deployment")
+                self.logger.info(f"Project {deployment_config.project_name} already exists, triggering new deployment")
                 
                 # Trigger new deployment
                 deployment_response = self.cf_api.trigger_deployment(deployment_config.project_name)
                 deployment_id = deployment_response.get("result", {}).get("id")
                 
             else:
-                logger.info(f"Creating new Cloudflare Pages project: {deployment_config.project_name}")
+                self.logger.info(f"Creating new Cloudflare Pages project: {deployment_config.project_name}")
                 
                 # Create new project
                 project_response = self.cf_api.create_pages_project(deployment_config, github_repo)
@@ -355,7 +355,7 @@ class DeployAgent(BaseAgent):
             
             # Wait for deployment completion if requested
             if wait_for_deployment and deployment_id:
-                logger.info("Waiting for deployment to complete...")
+                self.logger.info("Waiting for deployment to complete...")
                 final_status = self.wait_for_deployment_completion(
                     deployment_config.project_name, 
                     deployment_id
@@ -367,11 +367,11 @@ class DeployAgent(BaseAgent):
                     result.success = False
                     result.error = f"Deployment failed: {final_status.get('deployment_trigger', {}).get('metadata', {}).get('commit_message', 'Unknown error')}"
                 
-            logger.info(f"Deployment process completed for {deployment_config.project_name}")
+            self.logger.info(f"Deployment process completed for {deployment_config.project_name}")
             return result
             
         except Exception as e:
-            logger.error(f"Deployment failed: {str(e)}")
+            self.logger.error(f"Deployment failed: {str(e)}")
             return DeploymentResult(
                 success=False,
                 error=f"Deployment failed: {str(e)}"
@@ -395,7 +395,7 @@ class DeployAgent(BaseAgent):
             status = self.cf_api.get_deployment_status(project_name, deployment_id)
             
             stage = status.get("stage")
-            logger.info(f"Deployment status: {stage}")
+            self.logger.info(f"Deployment status: {stage}")
             
             if stage in ["success", "failure"]:
                 return status
@@ -403,7 +403,7 @@ class DeployAgent(BaseAgent):
             # Wait before checking again
             time.sleep(30)
         
-        logger.warning(f"Deployment monitoring timed out after {max_wait_time} seconds")
+        self.logger.warning(f"Deployment monitoring timed out after {max_wait_time} seconds")
         return {"stage": "timeout"}
     
     def setup_custom_domain(self, project_name: str, domain: str) -> bool:
@@ -417,7 +417,7 @@ class DeployAgent(BaseAgent):
             True if successful, False otherwise
         """
         try:
-            logger.info(f"Setting up custom domain {domain} for project {project_name}")
+            self.logger.info(f"Setting up custom domain {domain} for project {project_name}")
             
             # Custom domain setup via API
             domain_data = {
@@ -430,10 +430,10 @@ class DeployAgent(BaseAgent):
             )
             
             if response.status_code in [200, 201]:
-                logger.info(f"Custom domain {domain} configured successfully")
+                self.logger.info(f"Custom domain {domain} configured successfully")
                 return True
             else:
-                logger.error(f"Failed to setup custom domain: {response.text}")
+                self.logger.error(f"Failed to setup custom domain: {response.text}")
                 return False
                 
         except Exception as e:
@@ -568,7 +568,7 @@ def deploy_to_cloudflare(project_name: str, github_repo: str,
         return result
         
     except Exception as e:
-        logger.error(f"Deployment failed: {e}")
+        logging.error(f"Deployment failed: {e}")
         return DeploymentResult(
             success=False,
             error=f"Deployment failed: {str(e)}"

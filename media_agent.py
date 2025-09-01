@@ -175,7 +175,7 @@ class MediaAgent(BaseAgent):
         if direct_url:
             return direct_url
         
-        logger.info(f"Direct resolution failed for ID {attachment_id}, attempting intelligent matching...")
+        self.logger.info(f"Direct resolution failed for ID {attachment_id}, attempting intelligent matching...")
         
         # Get all available media
         media_map = self.get_all_available_media()
@@ -190,7 +190,7 @@ class MediaAgent(BaseAgent):
             context_words = context_lower.split()
             for word in context_words:
                 if len(word) > 3 and word in media_map:
-                    logger.info(f"Found context match for '{word}': {media_map[word]}")
+                    self.logger.info(f"Found context match for '{word}': {media_map[word]}")
                     return media_map[word]
             
             # Special case mappings based on common patterns
@@ -209,7 +209,7 @@ class MediaAgent(BaseAgent):
                 if key in context_lower:
                     for keyword in keywords:
                         if keyword in media_map:
-                            logger.info(f"Found special mapping for '{key}' -> '{keyword}': {media_map[keyword]}")
+                            self.logger.info(f"Found special mapping for '{key}' -> '{keyword}': {media_map[keyword]}")
                             return media_map[keyword]
         
         # Fallback: return the most recent media item
@@ -220,11 +220,11 @@ class MediaAgent(BaseAgent):
             
             if recent_media and len(recent_media) > 0:
                 fallback_url = recent_media[0].get('source_url')
-                logger.info(f"Using fallback (most recent) media: {fallback_url}")
+                self.logger.info(f"Using fallback (most recent) media: {fallback_url}")
                 return fallback_url
                 
         except Exception as e:
-            logger.warning(f"Fallback media fetch failed: {e}")
+            self.logger.warning(f"Fallback media fetch failed: {e}")
         
         return None
     
@@ -239,14 +239,14 @@ class MediaAgent(BaseAgent):
             List of unique media URLs
         """
         # Debug: Log a sample of the content
-        logger.debug(f"Content sample (first 500 chars): {content[:500]}")
+        self.logger.debug(f"Content sample (first 500 chars): {content[:500]}")
         
         media_urls = set()
         
         # Extract from img tags
         img_pattern = r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>'
         img_matches = re.findall(img_pattern, content, re.IGNORECASE)
-        logger.debug(f"Found {len(img_matches)} img tag matches: {img_matches}")
+        self.logger.debug(f"Found {len(img_matches)} img tag matches: {img_matches}")
         
         # Resolve WordPress attachment IDs to URLs
         resolved_urls = []
@@ -255,9 +255,9 @@ class MediaAgent(BaseAgent):
                 resolved_url = self.intelligent_attachment_resolution(img_src, context)
                 if resolved_url:
                     resolved_urls.append(resolved_url)
-                    logger.info(f"Resolved attachment ID {img_src} → {resolved_url}")
+                    self.logger.info(f"Resolved attachment ID {img_src} → {resolved_url}")
                 else:
-                    logger.warning(f"Could not resolve attachment ID: {img_src}")
+                    self.logger.warning(f"Could not resolve attachment ID: {img_src}")
             else:
                 resolved_urls.append(img_src)  # Already a URL
         
@@ -266,19 +266,19 @@ class MediaAgent(BaseAgent):
         # Extract from markdown images
         md_img_pattern = r'!\[[^\]]*\]\(([^)]+)\)'
         md_img_matches = re.findall(md_img_pattern, content)
-        logger.debug(f"Found {len(md_img_matches)} markdown image matches: {md_img_matches}")
+        self.logger.debug(f"Found {len(md_img_matches)} markdown image matches: {md_img_matches}")
         media_urls.update(md_img_matches)
         
         # Extract from figure tags and other media elements
         figure_pattern = r'<figure[^>]*>.*?<img[^>]+src=["\']([^"\']+)["\'][^>]*>.*?</figure>'
         figure_matches = re.findall(figure_pattern, content, re.IGNORECASE | re.DOTALL)
-        logger.debug(f"Found {len(figure_matches)} figure tag matches: {figure_matches}")
+        self.logger.debug(f"Found {len(figure_matches)} figure tag matches: {figure_matches}")
         media_urls.update(figure_matches)
         
         # Look for any URL patterns that might be media
         url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+\.(jpg|jpeg|png|gif|webp|svg|bmp|tiff|mp4|mp3|wav|pdf)'
         url_matches = re.findall(url_pattern, content, re.IGNORECASE)
-        logger.debug(f"Found {len(url_matches)} direct URL matches: {url_matches}")
+        self.logger.debug(f"Found {len(url_matches)} direct URL matches: {url_matches}")
         media_urls.update([match[0] if isinstance(match, tuple) else match for match in url_matches])
         
         # Filter for actual media files
@@ -304,9 +304,9 @@ class MediaAgent(BaseAgent):
             else:
                 skipped_urls.append(f"{url} (no media extension)")
         
-        logger.info(f"Extracted {len(filtered_urls)} media URLs from content")
+        self.logger.info(f"Extracted {len(filtered_urls)} media URLs from content")
         if skipped_urls:
-            logger.debug(f"Skipped URLs: {skipped_urls}")
+            self.logger.debug(f"Skipped URLs: {skipped_urls}")
         
         return list(filtered_urls)
     
@@ -333,7 +333,7 @@ class MediaAgent(BaseAgent):
             filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
             
             # Download file
-            logger.info(f"Downloading: {url}")
+            self.logger.info(f"Downloading: {url}")
             response = requests.get(url, timeout=30, stream=True)
             response.raise_for_status()
             
@@ -361,11 +361,11 @@ class MediaAgent(BaseAgent):
                 size_bytes=total_size
             )
             
-            logger.info(f"Downloaded {filename} ({total_size} bytes)")
+            self.logger.info(f"Downloaded {filename} ({total_size} bytes)")
             return media_file
             
         except Exception as e:
-            logger.error(f"Failed to download {url}: {e}")
+            self.logger.error(f"Failed to download {url}: {e}")
             return None
     
     def upload_to_gcs(self, media_file: MediaFile) -> bool:
@@ -392,20 +392,20 @@ class MediaAgent(BaseAgent):
             try:
                 blob.make_public()
                 media_file.gcs_url = blob.public_url
-                logger.info(f"Using public URL for {media_file.filename}")
+                self.logger.info(f"Using public URL for {media_file.filename}")
             except Exception as e:
-                logger.warning(f"Cannot make {media_file.filename} public, using signed URL: {e}")
+                self.logger.warning(f"Cannot make {media_file.filename} public, using signed URL: {e}")
                 # Generate a signed URL (valid for 1 year)
                 from datetime import datetime, timedelta
                 expiration = datetime.utcnow() + timedelta(days=365)
                 media_file.gcs_url = blob.generate_signed_url(expiration=expiration)
-                logger.info(f"Using signed URL for {media_file.filename}")
+                self.logger.info(f"Using signed URL for {media_file.filename}")
             
-            logger.info(f"Uploaded {media_file.filename} to GCS: {media_file.gcs_url}")
+            self.logger.info(f"Uploaded {media_file.filename} to GCS: {media_file.gcs_url}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to upload {media_file.filename} to GCS: {e}")
+            self.logger.error(f"Failed to upload {media_file.filename} to GCS: {e}")
             return False
     
     def process_media_from_content(self, posts: List[Dict], pages: List[Dict]) -> MediaBundle:
@@ -441,10 +441,10 @@ class MediaAgent(BaseAgent):
             all_urls.update(urls)
         
         if not all_urls:
-            logger.info("No media URLs found in content")
+            self.logger.info("No media URLs found in content")
             return media_bundle
         
-        logger.info(f"Processing {len(all_urls)} unique media URLs")
+        self.logger.info(f"Processing {len(all_urls)} unique media URLs")
         
         # Create temporary directory for downloads
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -466,7 +466,7 @@ class MediaAgent(BaseAgent):
                     media_bundle.failed_uploads += 1
         
         media_bundle.total_files = len(all_urls)
-        logger.info(f"Media processing complete: {media_bundle.successful_uploads} successful, {media_bundle.failed_uploads} failed")
+        self.logger.info(f"Media processing complete: {media_bundle.successful_uploads} successful, {media_bundle.failed_uploads} failed")
         
         return media_bundle
     
@@ -509,7 +509,7 @@ class MediaAgent(BaseAgent):
         Returns:
             UpdatedContentBundle with migrated media and updated links
         """
-        logger.info("Starting media migration process...")
+        self.logger.info("Starting media migration process...")
         
         # Process and upload media
         media_bundle = self.process_media_from_content(posts, pages)

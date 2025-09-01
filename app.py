@@ -49,11 +49,11 @@ if 'deploy_result' not in st.session_state:
 with elements("main_header"):
     mui.Typography(
         "WordPress-to-Astro Migration with Pydantic Models",
-        variant="h1",
+        variant="h2",
         sx={"mb": 1}
     )
     mui.Typography(
-        "A demonstration of the agent-based migration pipeline.",
+        "An Agent-based migration pipeline.",
         variant="body1",
         sx={"color": "text.secondary", "mb": 2}
     )
@@ -72,7 +72,7 @@ PAGES = {
 with elements("sidebar_header"):
     mui.Typography(
         "Agent Workflow",
-        variant="h3",
+        variant="h4",
         sx={"mb": 2, "color": "primary.main"}
     )
 
@@ -87,7 +87,7 @@ def page_customer_ui():
     with elements("customer_header"):
         mui.Typography(
             "🎯 Customer Migration Interface",
-            variant="h2",
+            variant="h3",
             sx={"mb": 2}
         )
     
@@ -97,7 +97,7 @@ def page_customer_ui():
         with elements("wp_details_header"):
             mui.Typography(
                 "WordPress Site Details",
-                variant="h3",
+                variant="h4",
                 sx={"mb": 1.5}
             )
         site_url = st.text_input("WordPress Site URL", "https://example.com")
@@ -266,8 +266,11 @@ def page_customer_ui():
                     
                     # Convert posts to content files
                     for post in final_posts:
+                        # Escape single quotes in title
+                        escaped_title = post['title'].replace("'", "\'")
+                        
                         frontmatter = f"""---
-title: '{post['title'].replace("'", "\\'")}'
+title: '{escaped_title}'
 date: '{post['date']}'
 slug: {post['slug']}
 categories:
@@ -283,8 +286,11 @@ tags:
                     
                     # Convert pages to content files
                     for page in final_pages:
+                        # Escape single quotes in title
+                        escaped_title = page['title'].replace("'", "\'")
+                        
                         frontmatter = f"""---
-title: '{page['title'].replace("'", "\\'")}'
+title: '{escaped_title}'
 date: '{page['date']}'
 slug: {page['slug']}
 ---"""

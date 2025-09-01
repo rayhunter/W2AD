@@ -1,5 +1,6 @@
 streamlit
 streamlit-antd-components
+streamlit-elements
 pydantic
 pytest
 requests

@@ -48,9 +48,9 @@ if 'deploy_result' not in st.session_state:
 # --- Main Application UI ---
 with elements("main_header"):
     mui.Typography(
-        "WordPress-to-Astro Migration with Pydantic Models",
-        variant="h4",
-        sx={"mb": 1, "color": "primary.main"}
+        "🎯 Customer Migration Interface",
+        variant="h2",
+        sx={"mb": 1}
     )
     mui.Typography(
         "An Agent-based migration pipeline.",
@@ -80,9 +80,9 @@ selected_page = st.sidebar.selectbox(
 def page_customer_ui():
     with elements("customer_header"):
         mui.Typography(
-            "🎯 Customer Migration Interface",
-            variant="h3",
-            sx={"mb": 2}
+            "WordPress-to-Astro Migration with Pydantic Models",
+            variant="h4",
+            sx={"mb": 2, "color": "text.secondary"}
         )
     
     col1, col2 = st.columns(2)

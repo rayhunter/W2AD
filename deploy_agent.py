@@ -365,7 +365,14 @@ class DeployAgent(BaseAgent):
                     error="Failed to get project details for URL generation"
                 )
             subdomain = project_details.get("subdomain", "")
-            deployment_url = f"https://{subdomain}.pages.dev" if subdomain else None
+            # Check if subdomain already includes .pages.dev to avoid duplication
+            if subdomain:
+                if subdomain.endswith(".pages.dev"):
+                    deployment_url = f"https://{subdomain}"
+                else:
+                    deployment_url = f"https://{subdomain}.pages.dev"
+            else:
+                deployment_url = None
             project_url = f"https://dash.cloudflare.com/{self.account_id}/pages/view/{deployment_config.project_name}"
             
             result = DeploymentResult(

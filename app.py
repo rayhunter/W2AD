@@ -49,13 +49,13 @@ if 'deploy_result' not in st.session_state:
 with elements("main_header"):
     mui.Typography(
         "WordPress-to-Astro Migration with Pydantic Models",
-        variant="h2",
-        sx={"mb": 1}
+        variant="h4",
+        sx={"mb": 1, "color": "primary.main"}
     )
     mui.Typography(
         "An Agent-based migration pipeline.",
         variant="body1",
-        sx={"color": "text.secondary", "mb": 2}
+        sx={"color": "yellow", "mb": 2}
     )
 
 # --- Sidebar Navigation ---
@@ -69,16 +69,10 @@ PAGES = {
     "6. GitHubAgent": "page_github",
     "7. DeployAgent": "page_deploy",
 }
-with elements("sidebar_header"):
-    mui.Typography(
-        "Agent Workflow",
-        variant="h4",
-        sx={"mb": 2, "color": "primary.main"}
-    )
 
 # --- Navigation ---
 selected_page = st.sidebar.selectbox(
-    "Select Stage:",
+    "AGENT WORKFLOW:",
     options=list(PAGES.keys()),
     index=0
 )
@@ -97,8 +91,8 @@ def page_customer_ui():
         with elements("wp_details_header"):
             mui.Typography(
                 "WordPress Site Details",
-                variant="h4",
-                sx={"mb": 1.5}
+                variant="h5",
+                sx={"mb": 1.5, "fontStyle": "italic","color": "primary.main"}
             )
         site_url = st.text_input("WordPress Site URL", "https://example.com")
         username = st.text_input("Username (optional)")
@@ -107,13 +101,13 @@ def page_customer_ui():
         with elements("target_config_header"):
             mui.Typography(
                 "Target Configuration",
-                variant="h3",
-                sx={"mb": 1.5, "mt": 2}
+                variant="h5",
+                sx={"mb": 1.5, "mt": 2, "fontStyle": "italic","color": "primary.main"}
             )
         repo_name = st.text_input("Repository Name", "my-astro-site")
         github_username = st.text_input("GitHub Username", "your-username")
         
-        st.subheader("GitHub Integration")
+        st.subheader(":blue[GitHub Integration]")
         github_token = st.text_input(
             "GitHub Personal Access Token", 
             type="password",
@@ -121,7 +115,7 @@ def page_customer_ui():
         )
         private_repo = st.checkbox("Create private repository", value=False)
         
-        st.subheader("Cloudflare Deployment")
+        st.subheader(":blue[Cloudflare Deployment]")
         enable_cloudflare_deploy = st.checkbox("Enable Cloudflare Pages deployment", value=False)
         
         cloudflare_api_token = None
@@ -144,7 +138,7 @@ def page_customer_ui():
                 help="Optional: Custom domain to configure for your site"
             )
         
-        st.subheader("Media Migration (Optional)")
+        st.subheader(":orange[Media Migration (Optional)]")
         enable_media_migration = st.checkbox("Enable media migration to Google Cloud Storage", value=False)
         
         gcs_credentials_path = ""
@@ -169,7 +163,7 @@ def page_customer_ui():
             )
         
     with col2:
-        st.subheader("Migration Preview")
+        st.subheader(":green[Migration Preview]", divider="green")
         if st.button("🚀 Start Migration", type="primary"):
             with st.spinner("Running migration pipeline..."):
                 try:

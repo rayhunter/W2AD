@@ -45,16 +45,18 @@ class DeploymentResult(BaseModel):
 class CloudflareAPI:
     """Cloudflare API client for Pages operations."""
     
-    def __init__(self, api_token: str, account_id: str):
+    def __init__(self, api_token: str, account_id: str, logger=None):
         """Initialize Cloudflare API client.
         
         Args:
             api_token: Cloudflare API token with Pages permissions
             account_id: Cloudflare account ID
+            logger: Logger instance to use (optional)
         """
         self.api_token = api_token
         self.account_id = account_id
         self.base_url = "https://api.cloudflare.com/client/v4"
+        self.logger = logger or logging.getLogger(__name__)
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bearer {api_token}",
@@ -83,7 +85,7 @@ class CloudflareAPI:
             return []
     
     def create_pages_project(self, deployment_config: CloudflareDeployment, 
-                           github_repo: str) -> Dict[str, Any]:
+                           github_repo: str) -> Optional[Dict[str, Any]]:
         """Create a new Cloudflare Pages project.
         
         Args:
@@ -146,7 +148,7 @@ class CloudflareAPI:
             return response.json()
         except Exception as e:
             self.logger.error(f"Failed to create Pages project: {e}")
-            raise
+            return None
     
     def get_project_details(self, project_name: str) -> Optional[Dict[str, Any]]:
         """Get details for a specific Pages project."""
@@ -161,7 +163,7 @@ class CloudflareAPI:
             self.logger.error(f"Failed to get project details: {e}")
             return None
     
-    def trigger_deployment(self, project_name: str) -> Dict[str, Any]:
+    def trigger_deployment(self, project_name: str) -> Optional[Dict[str, Any]]:
         """Trigger a new deployment for the project."""
         try:
             response = self.session.post(
@@ -171,9 +173,9 @@ class CloudflareAPI:
             return response.json()
         except Exception as e:
             self.logger.error(f"Failed to trigger deployment: {e}")
-            raise
+            return None
     
-    def get_deployment_status(self, project_name: str, deployment_id: str) -> Dict[str, Any]:
+    def get_deployment_status(self, project_name: str, deployment_id: str) -> Optional[Dict[str, Any]]:
         """Get status of a specific deployment."""
         try:
             response = self.session.get(
@@ -183,7 +185,7 @@ class CloudflareAPI:
             return response.json().get("result", {})
         except Exception as e:
             self.logger.error(f"Failed to get deployment status: {e}")
-            return {}
+            return None
 
 
 class DeployAgent(BaseAgent):
@@ -204,7 +206,7 @@ class DeployAgent(BaseAgent):
         # Set up Cloudflare-specific configuration
         self.api_token = api_token
         self.account_id = account_id
-        self.cf_api = CloudflareAPI(api_token, account_id)
+        self.cf_api = CloudflareAPI(api_token, account_id, logger=self.logger)
         
         # Validate configuration
         self.validate_configuration()
@@ -313,6 +315,8 @@ class DeployAgent(BaseAgent):
                 
                 # Trigger new deployment
                 deployment_response = self.cf_api.trigger_deployment(deployment_config.project_name)
+                if deployment_response is None:
+                    raise ValueError("Failed to trigger deployment: No response from API")
                 deployment_id = deployment_response.get("result", {}).get("id")
                 
             else:
@@ -321,6 +325,12 @@ class DeployAgent(BaseAgent):
                 # Create new project
                 project_response = self.cf_api.create_pages_project(deployment_config, github_repo)
                 
+                if project_response is None:
+                    return DeploymentResult(
+                        success=False,
+                        error="Failed to create Pages project: No response from API"
+                    )
+                
                 if not project_response.get("success"):
                     error_msg = project_response.get("errors", [{}])[0].get("message", "Unknown error")
                     return DeploymentResult(
@@ -328,8 +338,16 @@ class DeployAgent(BaseAgent):
                         error=f"Failed to create Cloudflare Pages project: {error_msg}"
                     )
                 
-                project_data = project_response.get("result", {})
-                deployment_id = project_data.get("latest_deployment", {}).get("id")
+                project_data = project_response.get("result")
+                if not project_data:
+                    return DeploymentResult(
+                        success=False,
+                        error="Failed to create Pages project: No project data in API response"
+                    )
+                
+                # Safely get deployment ID from project data
+                latest_deployment = project_data.get("latest_deployment", {})
+                deployment_id = latest_deployment.get("id") if latest_deployment else None
             
             # Get project details for URLs
             project_details = self.cf_api.get_project_details(deployment_config.project_name)
@@ -341,6 +359,11 @@ class DeployAgent(BaseAgent):
                 )
             
             # Extract URLs
+            if project_details is None:
+                return DeploymentResult(
+                    success=False,
+                    error="Failed to get project details for URL generation"
+                )
             subdomain = project_details.get("subdomain", "")
             deployment_url = f"https://{subdomain}.pages.dev" if subdomain else None
             project_url = f"https://dash.cloudflare.com/{self.account_id}/pages/view/{deployment_config.project_name}"
@@ -393,6 +416,10 @@ class DeployAgent(BaseAgent):
         
         while time.time() - start_time < max_wait_time:
             status = self.cf_api.get_deployment_status(project_name, deployment_id)
+            
+            if status is None:
+                self.logger.warning("Failed to get deployment status")
+                return {"stage": "unknown"}
             
             stage = status.get("stage")
             self.logger.info(f"Deployment status: {stage}")

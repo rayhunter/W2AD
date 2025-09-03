@@ -397,6 +397,16 @@ class DeployAgent(BaseAgent):
                 # Safely get deployment ID from project data
                 latest_deployment = project_data.get("latest_deployment", {})
                 deployment_id = latest_deployment.get("id") if latest_deployment else None
+                
+                # If no initial deployment was created, trigger one manually
+                if not deployment_id:
+                    self.logger.info("No initial deployment found, triggering first deployment from GitHub")
+                    deployment_response = self.cf_api.trigger_deployment(deployment_config.project_name)
+                    if deployment_response:
+                        deployment_id = deployment_response.get("result", {}).get("id")
+                        self.logger.info(f"Triggered initial deployment: {deployment_id}")
+                    else:
+                        self.logger.warning("Failed to trigger initial deployment")
             
             # Get project details for URLs
             project_details = self.cf_api.get_project_details(deployment_config.project_name)

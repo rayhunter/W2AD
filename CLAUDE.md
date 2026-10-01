@@ -16,11 +16,12 @@ streamlit run app.py
 # Tests live in tests/pytest/; pytest.ini sets testpaths and puts the repo root on sys.path
 pytest
 pytest tests/pytest/test_content_sanitization.py -v
+pytest tests/pytest/test_migration_correctness.py -v
 pytest tests/pytest/test_content_sanitization.py::TestIntegrationScenarios::test_batch_content_processing
 pytest tests/pytest --cov=. --cov-report=html
 ```
 
-Some test files (e.g. `test_base_agent.py`, `test_updated_agents.py`, `test_gcs_setup.py`) are print-heavy scripts that hit real/fake external services; they are not pure unit tests. Manual acceptance test scripts are in `tests/manual/`.
+Some test files (e.g. `test_base_agent.py`, `test_updated_agents.py`) are print-heavy scripts that hit real/fake external services; they are not pure unit tests. Manual acceptance test scripts are in `tests/manual/`.
 
 Standalone debugging scripts at the root: `debug_deploy_agent.py`, `debug_wp_content.py`, `list_wp_media.py`, `test_cloudflare_credentials.py`, `demo_base_agent.py`.
 

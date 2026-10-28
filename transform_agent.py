@@ -5,6 +5,9 @@ from pydantic import BaseModel
 import logging
 from datetime import datetime
 from base_agent import BaseAgent, BaseResult, AgentStatus
+from content_sanitizer import ContentSanitizer
+
+_sanitizer = ContentSanitizer()
 
 class MarkdownPost(BaseModel):
     """Model for a transformed markdown post."""
@@ -66,29 +69,9 @@ class TransformAgent(BaseAgent):
         
         This function fixes common issues that can cause Astro build errors,
         particularly with image references that might be interpreted as module imports.
+        Delegates to the shared ContentSanitizer image rules.
         """
-        # Fix image references that are just numbers (e.g., ![Alt](15) -> descriptive text)
-        markdown_content = re.sub(
-            r'!\[([^\]]*)\]\(([0-9]+)\)',
-            r'_[Image: \1]_',
-            markdown_content
-        )
-        
-        # Fix empty image references
-        markdown_content = re.sub(
-            r'!\[([^\]]*)\]\(\s*\)',
-            r'_[Image: \1]_',
-            markdown_content
-        )
-        
-        # Fix image references with invalid characters that could cause imports
-        markdown_content = re.sub(
-            r'!\[([^\]]*)\]\(([^)]*[<>"\|\*\?]+[^)]*)\)',
-            r'_[Image: \1]_',
-            markdown_content
-        )
-        
-        return markdown_content
+        return _sanitizer.sanitize_image_references(markdown_content)
     
     def html_to_markdown(self, html_content: str) -> str:
         """Convert HTML content to Markdown."""

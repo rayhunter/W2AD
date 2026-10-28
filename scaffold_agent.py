@@ -8,6 +8,9 @@ from pydantic import BaseModel
 import logging
 import shutil
 from base_agent import BaseAgent, BaseResult, AgentStatus
+from content_sanitizer import ContentSanitizer
+
+_sanitizer = ContentSanitizer()
 
 class ProjectStructure(BaseModel):
     """Model representing the Astro project structure."""
@@ -66,28 +69,10 @@ class AstroScaffoldAgent(BaseAgent):
         """Validate and sanitize markdown content to prevent module import errors.
         
         This function fixes common issues that can cause Astro build errors.
+        Delegates to the shared ContentSanitizer image rules.
         """
-        # Fix image references that are just numbers (e.g., ![Alt](15) -> descriptive text)
-        content = re.sub(
-            r'!\[([^\]]*)\]\(([0-9]+)\)',
-            r'_[Image: \1]_',
-            content
-        )
-        
-        # Fix empty image references
-        content = re.sub(
-            r'!\[([^\]]*)\]\(\s*\)',
-            r'_[Image: \1]_',
-            content
-        )
-        
-        # Fix image references with invalid characters that could cause imports
-        content = re.sub(
-            r'!\[([^\]]*)\]\(([^)]*[<>"\|\*\?]+[^)]*)\)',
-            r'_[Image: \1]_',
-            content
-        )
-        
+        content = _sanitizer.sanitize_image_references(content)
+
         self.logger.debug("Content sanitized to prevent module import errors")
         return content
     

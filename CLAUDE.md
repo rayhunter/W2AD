@@ -4,113 +4,60 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-### Running the Application
 ```bash
-# Setup virtual environment
+# Setup (venv/ already exists locally; virtual/ is an older, unused env)
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
 
-# Run the main Streamlit application
+# Run the Streamlit UI
 streamlit run app.py
-```
 
-### Testing
-```bash
-# Run all tests
+# Tests live in tests/pytest/; pytest.ini sets testpaths and puts the repo root on sys.path
 pytest
-
-# Run specific test files
-pytest test_content_sanitization.py -v
-pytest test_migration.py -v
-
-# Run test with coverage
-pytest --cov=. --cov-report=html
+pytest tests/pytest/test_content_sanitization.py -v
+pytest tests/pytest/test_content_sanitization.py::TestIntegrationScenarios::test_batch_content_processing
+pytest tests/pytest --cov=. --cov-report=html
 ```
 
-### Generated Astro Projects
-When working with generated Astro projects in `output/generated-projects/`:
-```bash
-cd output/generated-projects/[project-name]/
-npm install
-npm run dev      # Development server
-npm run build    # Production build  
-npm run preview  # Preview build
-```
+Some test files (e.g. `test_base_agent.py`, `test_updated_agents.py`, `test_gcs_setup.py`) are print-heavy scripts that hit real/fake external services; they are not pure unit tests. Manual acceptance test scripts are in `tests/manual/`.
+
+Standalone debugging scripts at the root: `debug_deploy_agent.py`, `debug_wp_content.py`, `list_wp_media.py`, `test_cloudflare_credentials.py`, `demo_base_agent.py`.
+
+Generated Astro projects (`output/generated-projects/<name>/`) are ordinary Astro apps: `npm install`, `npm run dev`, `npm run build`.
 
 ## Architecture
 
-### Agent-Based Migration Pipeline
-This tool uses a 7-agent architecture for WordPress-to-Astro migration:
+WordPress → Astro + Decap CMS migration tool. All modules are flat at the repo root (no package).
 
-1. **ExtractionAgent** (`extraction_agent.py`) - Extracts content from WordPress REST API
-   - Models: `WPPost`, `WPPage`, `WPContentBundle`
-   - Handles authentication and pagination
+### Agents and BaseAgent
+Every agent subclasses `BaseAgent` (`base_agent.py`), which provides logging, `_execute_with_metrics()` (timing + success/failure tracking), `validate_input/output`, `health_check`, and an abstract `process()` returning `BaseResult`. See `BASE_AGENT_SUMMARY.md` for details.
 
-2. **TransformAgent** (`transform_agent.py`) - Converts HTML to Markdown with content sanitization  
-   - Models: `MarkdownPost`, `MarkdownPage`, `StaticContentBundle`
-   - Critical: Includes `sanitize_markdown_content()` to prevent module import errors
+Each agent module also exposes a module-level convenience function, and **`app.py` calls these functions, not the classes directly**:
 
-3. **MediaAgent** (`media_agent.py`) - Migrates media files to Google Cloud Storage
-   - Downloads WordPress attachments and uploads to GCS
-   - Updates content references to new URLs
+| Step | Module | Entry function |
+|---|---|---|
+| 1. Extract (WP REST API) | `extraction_agent.py` | `extract_from_wordpress()` → `WPContentBundle` |
+| 2. Media → GCS (optional) | `media_agent.py` | `process_media_migration()` (rewrites content URLs) |
+| 3. HTML → Markdown | `transform_agent.py` | `transform_bundle()` → `StaticContentBundle` |
+| 4. Decap CMS config | `cms_config_agent.py` | `generate_cms_config()` |
+| 5. Astro scaffold | `scaffold_agent.py` | `create_astro_project()` |
+| 6. GitHub repo + push | `github_agent.py` | `create_github_repo()` |
+| 7. Cloudflare Pages deploy | `deploy_agent.py` | `deploy_to_cloudflare()` |
 
-4. **CMSConfigAgent** (`cms_config_agent.py`) - Generates Decap CMS configuration
-   - Creates admin interface config for content editing
+The full pipeline is orchestrated inside `page_customer_ui()` in `app.py` (the "Start Migration" button). `app.py` also has one page per agent (`page_extraction`, `page_media`, …, routed via `display_page`) for running/debugging steps individually.
 
-5. **AstroScaffoldAgent** (`scaffold_agent.py`) - Creates complete Astro project
-   - Models: `ProjectStructure`
-   - Includes content validation and sanitization
-   - Generates layouts, pages, and configuration files
+`content_schemas.py` holds a richer set of Pydantic content models (`WordPressPost`, `MediaAttachment`, `ContentCollection`, …) that is tested but not yet wired into the pipeline, which still uses the per-agent models (`WPPost`, `MarkdownPost`, etc.).
 
-6. **GitHubAgent** (`github_agent.py`) - Creates repository and pushes code
-   - Handles GitHub API integration and Git operations
+### Content sanitization (prevents Astro build failures)
+WordPress content often yields markdown like `![Alt](15)` (numeric attachment IDs), which Astro treats as module imports and fails the build. Sanitization converts these to `_[Image: Alt]_`. The rules live in `content_sanitizer.py` (`ContentSanitizer`, covered by `test_content_sanitization.py`). The pipeline applies them twice, both via `ContentSanitizer.sanitize_image_references()`:
+- `TransformAgent.sanitize_markdown_content()` — during HTML → Markdown
+- `AstroScaffoldAgent.validate_and_sanitize_content()` — before writing content files
 
-7. **DeployAgent** (referenced but not implemented) - Deployment automation
+The pipeline deliberately does **not** call the full `sanitize_markdown_content()` / `sanitize_content()`. Its `sanitize_links` step turns any link whose URL contains `?`, `*`, `|`, `<`, `>` or `"` into plain text, which would break WordPress links like `/?p=123`.
 
-### Content Sanitization System
-**Critical for preventing build failures**: The tool includes comprehensive content sanitization to prevent Astro module import errors:
+### Configuration / credentials
+Credentials (GitHub token, Cloudflare API token + account ID, GCS service-account JSON path + bucket) are entered in the Streamlit form and passed as arguments; `.env` is not auto-loaded by the app. `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` env vars are only read by `deploy_agent.py`'s `__main__` block. `media_agent.py` sets `GOOGLE_APPLICATION_CREDENTIALS` from the provided path.
 
-- **Image Reference Validation**: Converts numeric references like `![Alt](15)` to descriptive text `_[Image: Alt]_`
-- **Empty Reference Cleanup**: Handles empty image references gracefully  
-- **Character Escaping**: Prevents problematic characters that could cause import errors
-- **Automated Testing**: `test_content_sanitization.py` ensures no regressions
-
-### Data Flow
-1. WordPress content extracted → Pydantic models
-2. Media migration (optional) → Updates content URLs  
-3. HTML→Markdown transformation → Content sanitization applied
-4. Astro project scaffolding → Validation and final sanitization
-5. GitHub integration → Repository creation and code push
-
-### Key Dependencies
-- **Streamlit**: Web UI framework (`app.py`)
-- **Pydantic**: Data validation and serialization throughout agents
-- **html2text**: HTML to Markdown conversion
-- **google-cloud-storage**: Media migration to GCS
-- **PyGithub + GitPython**: GitHub integration
-- **BeautifulSoup4**: HTML processing
-- **PyYAML**: Configuration file generation
-
-### Project Output Structure
-Generated Astro projects follow this structure:
-```
-output/generated-projects/[project-name]/
-├── src/content/blog/     # Migrated WordPress posts
-├── src/content/pages/    # Migrated WordPress pages  
-├── src/layouts/          # Astro layout templates
-├── public/admin/         # Decap CMS interface
-└── package.json          # Astro + Tailwind dependencies
-```
-
-### Environment Configuration
-Required environment variables:
-- `GITHUB_TOKEN`: GitHub Personal Access Token
-- `CLOUDFLARE_TOKEN`: For deployment (optional)
-- `GOOGLE_CLOUD_CREDENTIALS`: Path to GCS service account JSON
-
-### Testing Strategy
-- **Unit tests**: Individual agent functionality
-- **Integration tests**: Full migration pipeline (`test_migration.py`)  
-- **Content sanitization tests**: Prevent build failures (`test_content_sanitization.py`)
-- **Manual testing**: `tests/manual/` directory for user acceptance testing
+### Output
+Generated projects are written to `output/generated-projects/<project-name>/` with content in `src/content/blog/` and `src/content/pages/`, layouts in `src/layouts/`, and the Decap admin at `public/admin/` (`index.html` + `config.yml`).

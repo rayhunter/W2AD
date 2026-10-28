@@ -17,6 +17,7 @@ class WPPost(BaseModel):
     categories: List[str] = []
     tags: List[str] = []
     featured_media: Optional[int] = None
+    featured_image: Optional[str] = None
 
 class WPPage(BaseModel):
     """Model for a WordPress page."""
@@ -27,6 +28,14 @@ class WPPage(BaseModel):
     slug: str
     status: str
     featured_media: Optional[int] = None
+    featured_image: Optional[str] = None
+
+def get_featured_image_url(item_data: Dict[str, Any]) -> Optional[str]:
+    """Get the featured image URL from a post/page fetched with _embed=wp:featuredmedia."""
+    embedded = item_data.get("_embedded", {}).get("wp:featuredmedia") or []
+    if embedded and isinstance(embedded[0], dict):
+        return embedded[0].get("source_url")
+    return None
 
 class WPContentBundle(BaseModel):
     """Model for bundled WordPress content."""
@@ -69,7 +78,7 @@ class ExtractionAgent(BaseAgent):
         
         response = requests.get(
             f"{self.api_base}/posts",
-            params={"per_page": per_page, "status": "publish"},
+            params={"per_page": per_page, "status": "publish", "_embed": "wp:featuredmedia"},
             auth=self.auth,
             timeout=30
         )
@@ -89,7 +98,8 @@ class ExtractionAgent(BaseAgent):
                 status=post_data["status"],
                 categories=[],  # Would need additional API calls to populate
                 tags=[],        # Would need additional API calls to populate
-                featured_media=post_data.get("featured_media")
+                featured_media=post_data.get("featured_media"),
+                featured_image=get_featured_image_url(post_data)
             )
             posts.append(post)
         
@@ -106,7 +116,7 @@ class ExtractionAgent(BaseAgent):
         
         response = requests.get(
             f"{self.api_base}/pages",
-            params={"per_page": per_page, "status": "publish"},
+            params={"per_page": per_page, "status": "publish", "_embed": "wp:featuredmedia"},
             auth=self.auth,
             timeout=30
         )
@@ -123,7 +133,8 @@ class ExtractionAgent(BaseAgent):
                 date=page_data["date"],
                 slug=page_data["slug"],
                 status=page_data["status"],
-                featured_media=page_data.get("featured_media")
+                featured_media=page_data.get("featured_media"),
+                featured_image=get_featured_image_url(page_data)
             )
             pages.append(page)
         

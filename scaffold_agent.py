@@ -294,6 +294,9 @@ const { frontmatter } = Astro.props;
         {new Date(frontmatter.date).toLocaleDateString()}
       </time>
     </div>
+    {frontmatter.image && (
+      <img src={frontmatter.image} alt={frontmatter.title} class="featured-image" />
+    )}
     <slot />
   </article>
 </BaseLayout>"""

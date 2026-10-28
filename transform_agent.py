@@ -126,7 +126,7 @@ class TransformAgent(BaseAgent):
             slug=wp_post.slug,
             categories=wp_post.categories,
             tags=wp_post.tags,
-            image=None  # Would need media processing for this
+            image=wp_post.featured_image
         )
     
     def transform_page(self, wp_page) -> MarkdownPage:
@@ -138,7 +138,7 @@ class TransformAgent(BaseAgent):
             content=markdown_content,
             date=wp_page.date,
             slug=wp_page.slug,
-            image=None  # Would need media processing for this
+            image=wp_page.featured_image
         )
     
     def create_content_files(self, bundle: StaticContentBundle) -> Dict[str, List[Dict[str, str]]]:

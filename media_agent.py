@@ -430,7 +430,9 @@ class MediaAgent(BaseAgent):
                 title_context = str(post_title)
             urls = self.extract_media_urls(post.get('content', ''), context=title_context)
             all_urls.update(urls)
-        
+            if post.get('featured_image'):
+                all_urls.add(post['featured_image'])
+
         for page in pages:
             page_title = page.get('title', {})
             if isinstance(page_title, dict):
@@ -439,7 +441,9 @@ class MediaAgent(BaseAgent):
                 title_context = str(page_title)
             urls = self.extract_media_urls(page.get('content', ''), context=title_context)
             all_urls.update(urls)
-        
+            if page.get('featured_image'):
+                all_urls.add(page['featured_image'])
+
         if not all_urls:
             self.logger.info("No media URLs found in content")
             return media_bundle
@@ -519,12 +523,16 @@ class MediaAgent(BaseAgent):
         for post in posts:
             updated_post = post.copy()
             updated_post['content'] = self.update_content_links(post.get('content', ''), media_bundle)
+            if post.get('featured_image'):
+                updated_post['featured_image'] = self.update_content_links(post['featured_image'], media_bundle)
             updated_posts.append(updated_post)
         
         updated_pages = []
         for page in pages:
             updated_page = page.copy()
             updated_page['content'] = self.update_content_links(page.get('content', ''), media_bundle)
+            if page.get('featured_image'):
+                updated_page['featured_image'] = self.update_content_links(page['featured_image'], media_bundle)
             updated_pages.append(updated_page)
         
         bundle = UpdatedContentBundle(

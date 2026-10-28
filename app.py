@@ -262,7 +262,8 @@ def page_customer_ui():
                     for post in final_posts:
                         # Escape single quotes in title
                         escaped_title = post['title'].replace("'", "\'")
-                        
+                        image_line = f"\nimage: '{post['image']}'" if post.get('image') else ""
+
                         frontmatter = f"""---
 title: '{escaped_title}'
 date: '{post['date']}'
@@ -270,7 +271,7 @@ slug: {post['slug']}
 categories:
 {chr(10).join(f'- {cat}' for cat in post.get('categories', []))}
 tags:
-{chr(10).join(f'- {tag}' for tag in post.get('tags', []))}
+{chr(10).join(f'- {tag}' for tag in post.get('tags', []))}{image_line}
 ---"""
                         file_content = f"{frontmatter}\n\n{post['content']}"
                         content_files["posts"].append({
@@ -282,11 +283,12 @@ tags:
                     for page in final_pages:
                         # Escape single quotes in title
                         escaped_title = page['title'].replace("'", "\'")
-                        
+                        image_line = f"\nimage: '{page['image']}'" if page.get('image') else ""
+
                         frontmatter = f"""---
 title: '{escaped_title}'
 date: '{page['date']}'
-slug: {page['slug']}
+slug: {page['slug']}{image_line}
 ---"""
                         file_content = f"{frontmatter}\n\n{page['content']}"
                         content_files["pages"].append({

@@ -52,8 +52,8 @@ class ContentSanitizer:
         
         # Fix relative paths that might be interpreted as modules
         content = re.sub(
-            r'!\[([^\]]*)\]\(\.\.?/[^/\s)]*\)',
-            lambda m: f'_[Image: {m.group(1)}]_' if not m.group(0).endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg')) else m.group(0),
+            r'!\[([^\]]*)\]\((\.\.?/[^/\s)]*)\)',
+            lambda m: f'_[Image: {m.group(1)}]_' if not m.group(2).lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg')) else m.group(0),
             content
         )
         

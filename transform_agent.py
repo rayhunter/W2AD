@@ -1,5 +1,7 @@
+import html
 import html2text
 import re
+import yaml
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 import logging
@@ -86,41 +88,50 @@ class TransformAgent(BaseAgent):
         
         return markdown.strip()
     
+    @staticmethod
+    def clean_title(raw_title: str) -> str:
+        """Turn a WordPress `title.rendered` value into plain text.
+
+        WordPress returns titles as HTML (entities like &#8217; and &amp;,
+        occasionally inline tags). Unescape entities and strip tags.
+        """
+        text = re.sub(r'<[^>]+>', '', raw_title or '')
+        return html.unescape(text).strip()
+
     def create_frontmatter(self, title: str, date: str, **kwargs) -> str:
-        """Create YAML frontmatter for the markdown file."""
-        frontmatter = ["---"]
-        # Escape single quotes in title for YAML
-        safe_title = title.replace("'", "\\'")
-        frontmatter.append(f"title: '{safe_title}'")
-        frontmatter.append(f"date: '{date}'")
-        frontmatter.append(f"slug: {kwargs.get('slug', '')}")
-        
-        if kwargs.get('categories'):
-            categories = kwargs['categories']
-            if categories:
-                frontmatter.append("categories:")
-                for cat in categories:
-                    frontmatter.append(f"- {cat}")
-        
-        if kwargs.get('tags'):
-            tags = kwargs['tags']
-            if tags:
-                frontmatter.append("tags:")
-                for tag in tags:
-                    frontmatter.append(f"- {tag}")
-        
+        """Create YAML frontmatter for the markdown file.
+
+        Serialized with PyYAML so titles containing quotes, colons, or other
+        special characters are always valid YAML. Keys are emitted in a fixed
+        order; empty list fields are written as [] rather than null.
+        """
+        data: Dict[str, Any] = {
+            "title": title,
+            "date": str(date),
+            "slug": kwargs.get('slug', ''),
+        }
+        if 'categories' in kwargs:
+            data["categories"] = list(kwargs.get('categories') or [])
+        if 'tags' in kwargs:
+            data["tags"] = list(kwargs.get('tags') or [])
         if kwargs.get('image'):
-            frontmatter.append(f"image: {kwargs['image']}")
-        
-        frontmatter.append("---")
-        return "\n".join(frontmatter)
-    
+            data["image"] = kwargs['image']
+
+        body = yaml.safe_dump(
+            data,
+            sort_keys=False,
+            allow_unicode=True,
+            default_flow_style=None,  # short lists inline as [a, b]; scalars plain
+            width=10_000,             # never wrap long titles
+        ).rstrip("\n")
+        return f"---\n{body}\n---"
+
     def transform_post(self, wp_post) -> MarkdownPost:
         """Transform a WordPress post to markdown format."""
         markdown_content = self.html_to_markdown(wp_post.content)
-        
+
         return MarkdownPost(
-            title=wp_post.title,
+            title=self.clean_title(wp_post.title),
             content=markdown_content,
             date=wp_post.date,
             slug=wp_post.slug,
@@ -128,13 +139,13 @@ class TransformAgent(BaseAgent):
             tags=wp_post.tags,
             image=wp_post.featured_image
         )
-    
+
     def transform_page(self, wp_page) -> MarkdownPage:
         """Transform a WordPress page to markdown format."""
         markdown_content = self.html_to_markdown(wp_page.content)
-        
+
         return MarkdownPage(
-            title=wp_page.title,
+            title=self.clean_title(wp_page.title),
             content=markdown_content,
             date=wp_page.date,
             slug=wp_page.slug,
@@ -228,12 +239,20 @@ class TransformAgent(BaseAgent):
 
 def transform_bundle(wp_bundle) -> StaticContentBundle:
     """Transform WordPress content bundle to static content.
-    
+
     Args:
         wp_bundle: WordPress content bundle
-        
+
     Returns:
         StaticContentBundle with transformed content
     """
     agent = TransformAgent()
     return agent.transform_bundle(wp_bundle)
+
+
+def create_content_files(bundle: StaticContentBundle) -> Dict[str, List[Dict[str, str]]]:
+    """Build the {posts: [...], pages: [...]} file list the scaffold agent expects.
+
+    Frontmatter is generated with PyYAML so it is always valid.
+    """
+    return TransformAgent().create_content_files(bundle)

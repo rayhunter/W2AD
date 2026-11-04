@@ -68,25 +68,64 @@ class ExtractionAgent(BaseAgent):
         # Validate configuration
         self.validate_configuration()
     
+    def _unwrap(self, result) -> Any:
+        """Return the data from a BaseResult, raising if the operation failed.
+
+        _execute_with_metrics swallows exceptions into a failed BaseResult.
+        For extraction that must not turn into an empty migration, so re-raise.
+        """
+        if not result.success:
+            raise RuntimeError(result.error or result.message or "Extraction failed")
+        return result.data
+
+    def _fetch_all_pages(self, endpoint: str, per_page: int = 100) -> List[Dict[str, Any]]:
+        """Fetch every item from a paginated WP REST endpoint.
+
+        Follows the X-WP-TotalPages header so sites with more than `per_page`
+        items are fully extracted.
+        """
+        items: List[Dict[str, Any]] = []
+        page = 1
+        total_pages = 1
+
+        while page <= total_pages:
+            response = requests.get(
+                f"{self.api_base}/{endpoint}",
+                params={"per_page": per_page, "status": "publish", "page": page, "_embed": "wp:featuredmedia"},
+                auth=self.auth,
+                timeout=30
+            )
+            response.raise_for_status()
+
+            batch = response.json()
+            if not isinstance(batch, list):
+                raise RuntimeError(f"Unexpected response from {endpoint} (page {page}): {str(batch)[:200]}")
+            items.extend(batch)
+
+            try:
+                total_pages = int(response.headers.get("X-WP-TotalPages", total_pages))
+            except ValueError:
+                total_pages = page
+
+            self.logger.debug(f"Fetched {endpoint} page {page}/{total_pages} ({len(batch)} items)")
+
+            if not batch:
+                break
+            page += 1
+
+        return items
+
     def extract_posts(self, per_page: int = 100) -> List[WPPost]:
-        """Extract blog posts from WordPress."""
-        return self._execute_with_metrics("extract_posts", self._extract_posts_impl, per_page).data or []
-    
+        """Extract blog posts from WordPress. Raises on API failure."""
+        return self._unwrap(self._execute_with_metrics("extract_posts", self._extract_posts_impl, per_page))
+
     def _extract_posts_impl(self, per_page: int = 100) -> List[WPPost]:
         """Implementation of post extraction."""
         self.logger.info("Extracting WordPress posts...")
-        
-        response = requests.get(
-            f"{self.api_base}/posts",
-            params={"per_page": per_page, "status": "publish", "_embed": "wp:featuredmedia"},
-            auth=self.auth,
-            timeout=30
-        )
-        response.raise_for_status()
-        
-        posts_data = response.json()
+
+        posts_data = self._fetch_all_pages("posts", per_page)
         posts = []
-        
+
         for post_data in posts_data:
             post = WPPost(
                 id=post_data["id"],
@@ -107,22 +146,14 @@ class ExtractionAgent(BaseAgent):
         return posts
     
     def extract_pages(self, per_page: int = 100) -> List[WPPage]:
-        """Extract pages from WordPress."""
-        return self._execute_with_metrics("extract_pages", self._extract_pages_impl, per_page).data or []
-    
+        """Extract pages from WordPress. Raises on API failure."""
+        return self._unwrap(self._execute_with_metrics("extract_pages", self._extract_pages_impl, per_page))
+
     def _extract_pages_impl(self, per_page: int = 100) -> List[WPPage]:
         """Implementation of page extraction."""
         self.logger.info("Extracting WordPress pages...")
-        
-        response = requests.get(
-            f"{self.api_base}/pages",
-            params={"per_page": per_page, "status": "publish", "_embed": "wp:featuredmedia"},
-            auth=self.auth,
-            timeout=30
-        )
-        response.raise_for_status()
-        
-        pages_data = response.json()
+
+        pages_data = self._fetch_all_pages("pages", per_page)
         pages = []
         
         for page_data in pages_data:
@@ -142,18 +173,22 @@ class ExtractionAgent(BaseAgent):
         return pages
     
     def extract_site_info(self) -> Dict[str, Any]:
-        """Extract site information."""
-        return self._execute_with_metrics("extract_site_info", self._extract_site_info_impl).data or {}
-    
+        """Extract site information. Non-fatal: returns {} if unavailable."""
+        result = self._execute_with_metrics("extract_site_info", self._extract_site_info_impl)
+        if not result.success:
+            self.logger.warning(f"Could not fetch site info, continuing without it: {result.error}")
+            return {}
+        return result.data or {}
+
     def _extract_site_info_impl(self) -> Dict[str, Any]:
         """Implementation of site info extraction."""
-        response = requests.get(f"{self.site_url}/wp-json", timeout=30)
+        response = requests.get(f"{self.site_url}/wp-json", auth=self.auth, timeout=30)
         response.raise_for_status()
         return response.json()
-    
+
     def extract_all(self) -> WPContentBundle:
-        """Extract all content from the WordPress site."""
-        return self._execute_with_metrics("extract_all", self._extract_all_impl).data
+        """Extract all content from the WordPress site. Raises on API failure."""
+        return self._unwrap(self._execute_with_metrics("extract_all", self._extract_all_impl))
     
     def _extract_all_impl(self) -> WPContentBundle:
         """Implementation of full content extraction."""
@@ -198,11 +233,13 @@ class ExtractionAgent(BaseAgent):
         if not self.site_url.startswith(('http://', 'https://')):
             raise ValueError("Site URL must start with http:// or https://")
         
-        # Test connection to WordPress API
+        # Test connection to WordPress API (GET, not HEAD: many hosts reject HEAD)
         try:
-            response = requests.head(f"{self.api_base}", timeout=10)
+            response = requests.get(f"{self.api_base}", auth=self.auth, timeout=10)
             if response.status_code >= 400:
-                raise ValueError(f"WordPress API not accessible at {self.api_base}")
+                raise ValueError(
+                    f"WordPress API not accessible at {self.api_base} (HTTP {response.status_code})"
+                )
         except requests.RequestException as e:
             raise ValueError(f"Cannot connect to WordPress API: {str(e)}")
         

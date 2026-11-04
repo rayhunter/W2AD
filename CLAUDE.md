@@ -16,13 +16,14 @@ streamlit run app.py
 # Tests live in tests/pytest/; pytest.ini sets testpaths and puts the repo root on sys.path
 pytest
 pytest tests/pytest/test_content_sanitization.py -v
+pytest tests/pytest/test_migration_correctness.py -v
 pytest tests/pytest/test_content_sanitization.py::TestIntegrationScenarios::test_batch_content_processing
 pytest tests/pytest --cov=. --cov-report=html
 ```
 
-Some test files (e.g. `test_base_agent.py`, `test_updated_agents.py`, `test_gcs_setup.py`) are print-heavy scripts that hit real/fake external services; they are not pure unit tests. Manual acceptance test scripts are in `tests/manual/`.
+Some test files (e.g. `test_base_agent.py`, `test_updated_agents.py`) are print-heavy scripts that hit real/fake external services; they are not pure unit tests. Manual acceptance test scripts are in `tests/manual/`.
 
-Standalone debugging scripts at the root: `debug_deploy_agent.py`, `debug_wp_content.py`, `list_wp_media.py`, `test_cloudflare_credentials.py`, `demo_base_agent.py`.
+Standalone debugging scripts at the root: `debug_deploy_agent.py`, `debug_wp_content.py`, `list_wp_media.py`, `check_cloudflare_credentials.py`, `check_gcs_setup.py`, `demo_base_agent.py`.
 
 Generated Astro projects (`output/generated-projects/<name>/`) are ordinary Astro apps: `npm install`, `npm run dev`, `npm run build`.
 
@@ -47,7 +48,7 @@ Each agent module also exposes a module-level convenience function, and **`app.p
 
 The full pipeline is orchestrated inside `page_customer_ui()` in `app.py` (the "Start Migration" button). `app.py` also has one page per agent (`page_extraction`, `page_media`, …, routed via `display_page`) for running/debugging steps individually.
 
-`content_schemas.py` holds a richer set of Pydantic content models (`WordPressPost`, `MediaAttachment`, `ContentCollection`, …) that is tested but not yet wired into the pipeline, which still uses the per-agent models (`WPPost`, `MarkdownPost`, etc.).
+Data models live in the agent that produces them: `WPPost`/`WPPage`/`WPContentBundle` (extraction), `MarkdownPost`/`MarkdownPage`/`StaticContentBundle` (transform), `MediaFile`/`MediaBundle`/`UpdatedContentBundle` (media), `DeploymentResult` (deploy).
 
 ### Content sanitization (prevents Astro build failures)
 WordPress content often yields markdown like `![Alt](15)` (numeric attachment IDs), which Astro treats as module imports and fails the build. Sanitization converts these to `_[Image: Alt]_`. The rules live in `content_sanitizer.py` (`ContentSanitizer`, covered by `test_content_sanitization.py`). The pipeline applies them twice, both via `ContentSanitizer.sanitize_image_references()`:

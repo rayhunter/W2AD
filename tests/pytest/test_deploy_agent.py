@@ -138,8 +138,8 @@ class TestCloudflareAPI:
         api = CloudflareAPI("token", "account")
         deployment_config = CloudflareDeployment(project_name="test-project")
         
-        with pytest.raises(requests.exceptions.HTTPError):
-            api.create_pages_project(deployment_config, "owner/repo")
+        # Errors are logged and reported as None; DeployAgent turns that into a failed DeploymentResult
+        assert api.create_pages_project(deployment_config, "owner/repo") is None
     
     @patch('deploy_agent.requests.Session')
     def test_get_project_details_success(self, mock_session):
@@ -193,12 +193,15 @@ class TestDeployAgent:
             
             assert agent.api_token == "token"
             assert agent.account_id == "account"
-            mock_api.assert_called_once_with("token", "account")
+            mock_api.assert_called_once_with("token", "account", logger=agent.logger)
+            # Credentials are verified during construction
+            mock_api.return_value.test_credentials.assert_called_once()
     
     def test_validate_credentials_success(self):
         """Test successful credential validation."""
+        self.agent.cf_api.test_credentials.reset_mock()  # ignore the check done in __init__
         self.agent.cf_api.test_credentials.return_value = True
-        
+
         result = self.agent.validate_credentials()
         assert result is True
         self.agent.cf_api.test_credentials.assert_called_once()
@@ -288,7 +291,6 @@ class TestDeployAgent:
     def test_deploy_to_cloudflare_new_project_success(self):
         """Test successful deployment to new Cloudflare project."""
         # Mock API responses
-        self.agent.cf_api.get_project_details.return_value = None  # Project doesn't exist
         self.agent.cf_api.create_pages_project.return_value = {
             "success": True,
             "result": {
@@ -303,7 +305,8 @@ class TestDeployAgent:
             "name": "test-project",
             "subdomain": "test-project-abc"
         }
-        self.agent.cf_api.get_project_details.return_value = project_details
+        # First lookup: project doesn't exist yet; second (after creation): its details
+        self.agent.cf_api.get_project_details.side_effect = [None, project_details]
         
         deployment_config = CloudflareDeployment(project_name="test-project")
         
@@ -394,8 +397,10 @@ class TestDeployAgent:
         ]
         
         self.agent.cf_api.get_deployment_status.side_effect = status_responses
-        
-        result = self.agent.wait_for_deployment_completion("test-project", "deployment123", max_wait_time=10)
+
+        # Don't actually sleep 30s between polls
+        with patch('deploy_agent.time.sleep'):
+            result = self.agent.wait_for_deployment_completion("test-project", "deployment123", max_wait_time=10)
         
         assert result["stage"] == "success"
         assert self.agent.cf_api.get_deployment_status.call_count == 4
@@ -417,10 +422,19 @@ class TestDeployAgent:
         """Test deployment monitoring timeout."""
         # Always return "building" status to trigger timeout
         self.agent.cf_api.get_deployment_status.return_value = {"stage": "building"}
-        
-        result = self.agent.wait_for_deployment_completion("test-project", "deployment123", max_wait_time=1)
-        
+
+        # Fake clock: each sleep advances time instead of blocking for 30s
+        clock = [0.0]
+        def fake_sleep(seconds):
+            clock[0] += seconds
+
+        with patch('deploy_agent.time.time', side_effect=lambda: clock[0]), \
+             patch('deploy_agent.time.sleep', side_effect=fake_sleep):
+            result = self.agent.wait_for_deployment_completion("test-project", "deployment123", max_wait_time=60)
+
         assert result["stage"] == "timeout"
+        assert result["last_known_stage"] == "building"
+        assert self.agent.cf_api.get_deployment_status.call_count == 2  # polls at t=0 and t=30
     
     def test_setup_custom_domain_success(self):
         """Test successful custom domain setup."""
@@ -505,7 +519,7 @@ class TestDeploymentResultModel:
         assert result.success is False
         assert result.error == "Deployment failed"
         assert result.deployment_url is None
-        assert result.clone_url is None
+        assert result.deployment_id is None
 
 
 class TestConvenienceFunction:
@@ -626,23 +640,25 @@ class TestRealWorldScenarios:
         with patch('deploy_agent.CloudflareAPI'):
             agent = DeployAgent("token", "account")
             
-            # Mock successful deployment
-            agent.cf_api.get_project_details.return_value = None
+            # Mock successful deployment: project doesn't exist, then is created
             agent.cf_api.create_pages_project.return_value = {
                 "success": True,
                 "result": {"name": "test", "subdomain": "test", "latest_deployment": {"id": "123"}}
             }
-            agent.cf_api.get_project_details.return_value = {"subdomain": "test"}
-            
+            agent.cf_api.get_project_details.side_effect = [None, {"subdomain": "test"}]
+
             # Mock successful custom domain setup
             with patch.object(agent, 'setup_custom_domain', return_value=True):
                 config = CloudflareDeployment(project_name="test")
                 result = agent.deploy_to_cloudflare(
                     deployment_config=config,
-                    github_repo="user/repo"
+                    github_repo="user/repo",
+                    wait_for_deployment=False
                 )
-                
+
                 assert result.success is True
+                assert result.deployment_url == "https://test.pages.dev"
+                assert result.deployment_id == "123"
     
     def test_large_project_deployment(self):
         """Test deployment of large project with many files."""

@@ -8,7 +8,7 @@ from streamlit_elements import elements, mui, html
 # Enable debug logging for media agent
 logging.getLogger('media_agent').setLevel(logging.DEBUG)
 from extraction_agent import extract_from_wordpress
-from transform_agent import transform_bundle
+from transform_agent import transform_bundle, create_content_files, StaticContentBundle
 from extraction_agent import WPContentBundle
 from media_agent import process_media_migration
 from cms_config_agent import generate_cms_config
@@ -227,11 +227,7 @@ def page_customer_ui():
                     st.info("🔄 Transforming to Markdown...")
                     markdown_bundle = transform_bundle(wp_content)
                     st.session_state.markdown_bundle = markdown_bundle
-                    
-                    # Convert to final format
-                    final_posts = [post.model_dump() for post in markdown_bundle.posts]
-                    final_pages = [page.model_dump() for page in markdown_bundle.pages]
-                    
+
                     # Step 4: CMS Config
                     st.info("⚙️ Generating CMS configuration...")
                     repo_info = {
@@ -252,50 +248,10 @@ def page_customer_ui():
                     st.info("🏗️ Creating Astro project...")
                     project_path = f"output/generated-projects/{repo_name}"
                     
-                    # Create content files format from processed posts/pages
-                    content_files = {
-                        "posts": [],
-                        "pages": []
-                    }
-                    
-                    # Convert posts to content files
-                    for post in final_posts:
-                        # Escape single quotes in title
-                        escaped_title = post['title'].replace("'", "\'")
-                        image_line = f"\nimage: '{post['image']}'" if post.get('image') else ""
+                    # Build content files (frontmatter generated via PyYAML, so
+                    # titles with quotes/colons can't break the Astro build)
+                    content_files = create_content_files(markdown_bundle)
 
-                        frontmatter = f"""---
-title: '{escaped_title}'
-date: '{post['date']}'
-slug: {post['slug']}
-categories:
-{chr(10).join(f'- {cat}' for cat in post.get('categories', []))}
-tags:
-{chr(10).join(f'- {tag}' for tag in post.get('tags', []))}{image_line}
----"""
-                        file_content = f"{frontmatter}\n\n{post['content']}"
-                        content_files["posts"].append({
-                            "path": f"src/content/blog/{post['slug']}.md",
-                            "content": file_content
-                        })
-                    
-                    # Convert pages to content files
-                    for page in final_pages:
-                        # Escape single quotes in title
-                        escaped_title = page['title'].replace("'", "\'")
-                        image_line = f"\nimage: '{page['image']}'" if page.get('image') else ""
-
-                        frontmatter = f"""---
-title: '{escaped_title}'
-date: '{page['date']}'
-slug: {page['slug']}{image_line}
----"""
-                        file_content = f"{frontmatter}\n\n{page['content']}"
-                        content_files["pages"].append({
-                            "path": f"src/content/pages/{page['slug']}.md",
-                            "content": file_content
-                        })
-                    
                     # Create the project
                     project = create_astro_project(
                         project_root=project_path,
@@ -488,13 +444,10 @@ def page_transform():
         if st.session_state.markdown_bundle.posts:
             with st.expander("Sample Markdown Post"):
                 sample_post = st.session_state.markdown_bundle.posts[0]
-                st.code(f"""---
-title: '{sample_post.title}'
-date: '{sample_post.date}'
-slug: {sample_post.slug}
----
-
-{sample_post.content[:500]}...""", language="markdown")
+                sample_file = create_content_files(
+                    StaticContentBundle(posts=[sample_post], pages=[])
+                )["posts"][0]["content"]
+                st.code(f"{sample_file[:800]}...", language="markdown")
     else:
         st.info("Run the extraction step first to see transformed content.")
 

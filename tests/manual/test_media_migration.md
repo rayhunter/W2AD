@@ -179,7 +179,7 @@ Verify the migration handles various media types:
 
 **Issue**: GCS authentication fails
 - **Solution**: Verify service account JSON file path and permissions
-- **Test**: Use `test_gcs_setup.py` to verify GCS connectivity
+- **Test**: Use `check_gcs_setup.py` to verify GCS connectivity
 
 ## Test Data
 

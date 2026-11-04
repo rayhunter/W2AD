@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Test script to verify Google Cloud Storage setup for WordPress migration
+Script to verify Google Cloud Storage setup for WordPress migration
 """
 import os
 import sys
 from google.cloud import storage
 
-def test_gcs_setup(credentials_path, bucket_name):
+def check_gcs_setup(credentials_path, bucket_name):
     """Test GCS credentials and bucket access"""
     
     print("🔍 Testing Google Cloud Storage setup...")
@@ -99,7 +99,7 @@ if __name__ == "__main__":
         print("❌ No bucket name provided")
         sys.exit(1)
     
-    success = test_gcs_setup(credentials_path, bucket_name)
+    success = check_gcs_setup(credentials_path, bucket_name)
     
     if success:
         print(f"\n✅ Setup verified! Use these values in the migration tool:")

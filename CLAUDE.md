@@ -48,7 +48,7 @@ Each agent module also exposes a module-level convenience function, and **`app.p
 
 The full pipeline is orchestrated inside `page_customer_ui()` in `app.py` (the "Start Migration" button). `app.py` also has one page per agent (`page_extraction`, `page_media`, …, routed via `display_page`) for running/debugging steps individually.
 
-`content_schemas.py` holds a richer set of Pydantic content models (`WordPressPost`, `MediaAttachment`, `ContentCollection`, …) that is tested but not yet wired into the pipeline, which still uses the per-agent models (`WPPost`, `MarkdownPost`, etc.).
+Data models live in the agent that produces them: `WPPost`/`WPPage`/`WPContentBundle` (extraction), `MarkdownPost`/`MarkdownPage`/`StaticContentBundle` (transform), `MediaFile`/`MediaBundle`/`UpdatedContentBundle` (media), `DeploymentResult` (deploy).
 
 ### Content sanitization (prevents Astro build failures)
 WordPress content often yields markdown like `![Alt](15)` (numeric attachment IDs), which Astro treats as module imports and fails the build. Sanitization converts these to `_[Image: Alt]_`. The rules live in `content_sanitizer.py` (`ContentSanitizer`, covered by `test_content_sanitization.py`). The pipeline applies them twice, both via `ContentSanitizer.sanitize_image_references()`:

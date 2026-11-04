@@ -7,7 +7,7 @@ import requests
 import json
 import sys
 
-def test_cloudflare_credentials(api_token: str, account_id: str = None):
+def check_cloudflare_credentials(api_token: str, account_id: str = None):
     """Test Cloudflare API credentials with detailed error reporting."""
     
     print("🔧 Testing Cloudflare API Credentials...")
@@ -134,7 +134,7 @@ def main():
         account_id = None
     
     print()
-    success = test_cloudflare_credentials(api_token, account_id)
+    success = check_cloudflare_credentials(api_token, account_id)
     
     if not success:
         print("\n❌ Credential test failed!")

@@ -23,7 +23,7 @@ pytest tests/pytest --cov=. --cov-report=html
 
 Some test files (e.g. `test_base_agent.py`, `test_updated_agents.py`) are print-heavy scripts that hit real/fake external services; they are not pure unit tests. Manual acceptance test scripts are in `tests/manual/`.
 
-Standalone debugging scripts at the root: `debug_deploy_agent.py`, `debug_wp_content.py`, `list_wp_media.py`, `test_cloudflare_credentials.py`, `demo_base_agent.py`.
+Standalone debugging scripts at the root: `debug_deploy_agent.py`, `debug_wp_content.py`, `list_wp_media.py`, `check_cloudflare_credentials.py`, `check_gcs_setup.py`, `demo_base_agent.py`.
 
 Generated Astro projects (`output/generated-projects/<name>/`) are ordinary Astro apps: `npm install`, `npm run dev`, `npm run build`.
 

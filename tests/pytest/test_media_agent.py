@@ -425,6 +425,41 @@ class TestMediaAgent:
         assert result.posts[0]["content"] == '<img src="https://storage.googleapis.com/bucket/image.jpg" />'
         assert result.pages[0]["content"] == 'No images here'
     
+    @patch.object(MediaAgent, 'upload_to_gcs')
+    @patch.object(MediaAgent, 'download_media_file')
+    @patch.object(MediaAgent, 'resolve_wp_attachment_id')
+    def test_process_content_bundle_relinks_attachment_ids(self, mock_resolve, mock_download, mock_upload):
+        """<img src="15"> resolved via the WP API must end up pointing at the GCS copy."""
+        resolved = "https://example.com/wp-content/uploads/2024/photo.jpg"
+        gcs = "https://storage.googleapis.com/bucket/media/photo.jpg"
+        mock_resolve.side_effect = lambda aid: resolved if aid == "15" else None
+        mock_download.side_effect = lambda url, temp_dir: MediaFile(
+            original_url=url, filename="photo.jpg", local_path="/tmp/photo.jpg", content_type="image/jpeg"
+        )
+
+        def fake_upload(media_file):
+            media_file.gcs_url = gcs
+            return True
+        mock_upload.side_effect = fake_upload
+
+        posts = [{"content": '<p><img src="15" alt="Photo"> and <img class="x" src=\'15\'></p>'
+                             '<img src="150" alt="Other"> <p>Page 15 of the manual</p>'}]
+        pages = [{"content": f'<img src="{resolved}">'}]
+
+        result = self.agent.process_content_bundle(posts, pages)
+
+        post_html = result.posts[0]["content"]
+        assert f'<img src="{gcs}" alt="Photo">' in post_html
+        assert f"<img class=\"x\" src='{gcs}'>" in post_html
+        assert 'src="15"' not in post_html and "src='15'" not in post_html
+        # Other numbers, including IDs that merely start with 15, are untouched
+        assert '<img src="150" alt="Other">' in post_html
+        assert "Page 15 of the manual" in post_html
+        # The same file referenced by URL is relinked too, and uploaded only once
+        assert result.pages[0]["content"] == f'<img src="{gcs}">'
+        assert result.media_bundle.files[0].attachment_ids == ["15"]
+        mock_download.assert_called_once()
+
     @patch.object(MediaAgent, 'extract_media_urls')
     def test_process_content_bundle_no_media(self, mock_extract):
         """Test content bundle processing with no media."""

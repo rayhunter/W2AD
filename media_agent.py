@@ -20,6 +20,8 @@ class MediaFile(BaseModel):
     gcs_url: str = ""
     content_type: str = ""
     size_bytes: int = 0
+    # WordPress attachment IDs (e.g. "15" from <img src="15">) that resolved to original_url
+    attachment_ids: List[str] = []
 
 class MediaBundle(BaseModel):
     """Model for bundled media files."""
@@ -63,7 +65,10 @@ class MediaAgent(BaseAgent):
         self.gcs_folder = gcs_folder.strip('/')
         self.wp_site_url = wp_site_url.rstrip('/') if wp_site_url else None
         self.wp_api_base = f"{self.wp_site_url}/wp-json/wp/v2" if wp_site_url else None
-        
+        # attachment ID -> resolved media URL, recorded by extract_media_urls so the
+        # numeric src can be rewritten to the uploaded copy later
+        self._attachment_urls: Dict[str, str] = {}
+
         # Initialize GCS client
         try:
             if gcs_credentials_path:
@@ -144,6 +149,7 @@ class MediaAgent(BaseAgent):
                 resolved_url = self.resolve_wp_attachment_id(img_src)
                 if resolved_url:
                     resolved_urls.append(resolved_url)
+                    self._attachment_urls[img_src] = resolved_url
                     self.logger.info(f"Resolved attachment ID {img_src} → {resolved_url}")
                 else:
                     self.logger.warning(
@@ -352,7 +358,11 @@ class MediaAgent(BaseAgent):
                 if not media_file:
                     media_bundle.failed_uploads += 1
                     continue
-                
+
+                media_file.attachment_ids = sorted(
+                    aid for aid, resolved in self._attachment_urls.items() if resolved == url
+                )
+
                 # Upload to GCS
                 if self.upload_to_gcs(media_file):
                     media_bundle.files.append(media_file)
@@ -392,7 +402,19 @@ class MediaAgent(BaseAgent):
             
             # Replace any other direct references
             updated_content = updated_content.replace(original_url, gcs_url)
-        
+
+        # Rewrite numeric attachment-ID sources (<img src="15">) that resolved to an uploaded file.
+        # Only exact src attribute values are touched, so src="150" or plain text "15" are left alone.
+        for media in media_bundle.files:
+            if not media.gcs_url:
+                continue
+            for attachment_id in media.attachment_ids:
+                updated_content = re.sub(
+                    r'(\bsrc\s*=\s*)(["\'])' + re.escape(attachment_id) + r'\2',
+                    lambda m, url=media.gcs_url: f"{m.group(1)}{m.group(2)}{url}{m.group(2)}",
+                    updated_content,
+                )
+
         return updated_content
     
     def process_content_bundle(self, posts: List[Dict], pages: List[Dict]) -> UpdatedContentBundle:

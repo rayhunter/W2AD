@@ -9,7 +9,15 @@ from unittest.mock import Mock, patch, MagicMock, mock_open
 from pathlib import Path
 import tempfile
 import json
+import os
 from media_agent import MediaAgent, MediaFile, MediaBundle, UpdatedContentBundle, process_media_migration
+
+
+@pytest.fixture(autouse=True)
+def isolate_environ():
+    """MediaAgent sets GOOGLE_APPLICATION_CREDENTIALS; don't leak it to other tests."""
+    with patch.dict(os.environ):
+        yield
 
 
 class TestMediaAgent:
@@ -44,7 +52,9 @@ class TestMediaAgent:
             assert agent.gcs_bucket_name == self.gcs_bucket_name
             assert agent.gcs_folder == self.gcs_folder
             assert agent.wp_site_url == self.wp_site_url
-            mock_client.from_service_account_json.assert_called_once_with(self.gcs_credentials_path)
+            assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == self.gcs_credentials_path
+            mock_client.assert_called_once_with()
+            mock_client.return_value.bucket.assert_called_once_with(self.gcs_bucket_name)
     
     @patch('media_agent.requests.get')
     def test_resolve_wp_attachment_id_success(self, mock_get):
@@ -142,11 +152,14 @@ class TestMediaAgent:
         
         # Should resolve valid attachment ID
         assert "https://example.com/resolved-123.jpg" in urls
-        
-        # Should call resolve for numeric IDs
+
+        # Numeric <img src> IDs are looked up; unresolved ones are dropped, never guessed
         mock_resolve.assert_any_call("123")
         mock_resolve.assert_any_call("999")
-        mock_resolve.assert_any_call("456")
+        assert urls == ["https://example.com/resolved-123.jpg"]
+
+        # Markdown numeric refs are left for the content sanitizer, not resolved here
+        assert all(call.args != ("456",) for call in mock_resolve.call_args_list)
     
     def test_extract_media_urls_mixed_content(self):
         """Test extraction from content with mixed media types."""
@@ -174,7 +187,7 @@ class TestMediaAgent:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.headers = {'content-type': 'image/jpeg'}
-        mock_response.content = b'fake image data'
+        mock_response.iter_content.return_value = [b'fake image data']
         mock_get.return_value = mock_response
         
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -189,7 +202,8 @@ class TestMediaAgent:
             assert media_file.original_url == "https://example.com/test.jpg"
             assert media_file.filename == "test.jpg"
             assert media_file.content_type == "image/jpeg"
-            assert media_file.local_path.exists()
+            assert media_file.size_bytes == len(b'fake image data')
+            assert Path(media_file.local_path).read_bytes() == b'fake image data'
     
     @patch('media_agent.requests.get')
     def test_download_media_file_failure(self, mock_get):
@@ -233,9 +247,8 @@ class TestMediaAgent:
             media_file = MediaFile(
                 original_url="https://example.com/test.jpg",
                 filename="test.jpg",
-                local_path=Path(temp_file.name),
-                content_type="image/jpeg",
-                gcs_url=None
+                local_path=temp_file.name,
+                content_type="image/jpeg"
             )
             
             # Mock GCS operations
@@ -261,9 +274,8 @@ class TestMediaAgent:
             media_file = MediaFile(
                 original_url="https://example.com/test.jpg",
                 filename="test.jpg",
-                local_path=Path(temp_file.name),
-                content_type="image/jpeg",
-                gcs_url=None
+                local_path=temp_file.name,
+                content_type="image/jpeg"
             )
             
             # Mock GCS operations with public access failure
@@ -288,9 +300,8 @@ class TestMediaAgent:
             media_file = MediaFile(
                 original_url="https://example.com/test.jpg",
                 filename="test.jpg",
-                local_path=Path(temp_file.name),
-                content_type="image/jpeg",
-                gcs_url=None
+                local_path=temp_file.name,
+                content_type="image/jpeg"
             )
             
             # Mock GCS operations with upload failure
@@ -302,7 +313,7 @@ class TestMediaAgent:
             success = self.agent.upload_to_gcs(media_file)
             
             assert success is False
-            assert media_file.gcs_url is None
+            assert media_file.gcs_url == ""
     
     def test_update_content_links_img_tags(self):
         """Test updating image links in HTML img tags."""
@@ -312,18 +323,18 @@ class TestMediaAgent:
         '''
         
         media_bundle = MediaBundle(
-            media_files=[
+            files=[
                 MediaFile(
                     original_url="https://example.com/old.jpg",
                     filename="old.jpg",
-                    local_path=Path("/tmp/old.jpg"),
+                    local_path="/tmp/old.jpg",
                     content_type="image/jpeg",
                     gcs_url="https://storage.googleapis.com/bucket/new.jpg"
                 ),
                 MediaFile(
                     original_url="/uploads/old.png",
                     filename="old.png",
-                    local_path=Path("/tmp/old.png"),
+                    local_path="/tmp/old.png",
                     content_type="image/png",
                     gcs_url="https://storage.googleapis.com/bucket/new.png"
                 )
@@ -347,18 +358,18 @@ class TestMediaAgent:
         '''
         
         media_bundle = MediaBundle(
-            media_files=[
+            files=[
                 MediaFile(
                     original_url="https://example.com/old1.jpg",
                     filename="old1.jpg",
-                    local_path=Path("/tmp/old1.jpg"),
+                    local_path="/tmp/old1.jpg",
                     content_type="image/jpeg",
                     gcs_url="https://storage.googleapis.com/bucket/new1.jpg"
                 ),
                 MediaFile(
                     original_url="/assets/old2.png",
                     filename="old2.png",
-                    local_path=Path("/tmp/old2.png"),
+                    local_path="/tmp/old2.png",
                     content_type="image/png",
                     gcs_url="https://storage.googleapis.com/bucket/new2.png"
                 )
@@ -373,7 +384,7 @@ class TestMediaAgent:
     def test_update_content_links_no_matches(self):
         """Test content update when no URLs match."""
         content = '<p>No images in this content.</p>'
-        media_bundle = MediaBundle(media_files=[])
+        media_bundle = MediaBundle(files=[])
         
         updated_content = self.agent.update_content_links(content, media_bundle)
         
@@ -392,7 +403,7 @@ class TestMediaAgent:
         mock_media_file = MediaFile(
             original_url="https://example.com/image.jpg",
             filename="image.jpg",
-            local_path=Path("/tmp/image.jpg"),
+            local_path="/tmp/image.jpg",
             content_type="image/jpeg",
             gcs_url="https://storage.googleapis.com/bucket/image.jpg"
         )
@@ -410,9 +421,9 @@ class TestMediaAgent:
         result = self.agent.process_content_bundle(posts, pages)
         
         assert isinstance(result, UpdatedContentBundle)
-        assert len(result.media_bundle.media_files) == 1
-        assert result.updated_posts[0]["content"] == '<img src="https://storage.googleapis.com/bucket/image.jpg" />'
-        assert result.updated_pages[0]["content"] == 'No images here'
+        assert len(result.media_bundle.files) == 1
+        assert result.posts[0]["content"] == '<img src="https://storage.googleapis.com/bucket/image.jpg" />'
+        assert result.pages[0]["content"] == 'No images here'
     
     @patch.object(MediaAgent, 'extract_media_urls')
     def test_process_content_bundle_no_media(self, mock_extract):
@@ -425,9 +436,9 @@ class TestMediaAgent:
         result = self.agent.process_content_bundle(posts, pages)
         
         assert isinstance(result, UpdatedContentBundle)
-        assert len(result.media_bundle.media_files) == 0
-        assert result.updated_posts == posts
-        assert result.updated_pages == pages
+        assert len(result.media_bundle.files) == 0
+        assert result.posts == posts
+        assert result.pages == pages
     
     @patch.object(MediaAgent, 'extract_media_urls')
     @patch.object(MediaAgent, 'download_media_file')
@@ -442,9 +453,9 @@ class TestMediaAgent:
         result = self.agent.process_content_bundle(posts, pages)
         
         assert isinstance(result, UpdatedContentBundle)
-        assert len(result.media_bundle.media_files) == 0
+        assert len(result.media_bundle.files) == 0
         # Content should remain unchanged if download fails
-        assert result.updated_posts == posts
+        assert result.posts == posts
 
 
 class TestMediaFileModel:
@@ -456,7 +467,7 @@ class TestMediaFileModel:
             media_file = MediaFile(
                 original_url="https://example.com/test.jpg",
                 filename="test.jpg",
-                local_path=Path(temp_file.name),
+                local_path=temp_file.name,
                 content_type="image/jpeg",
                 gcs_url="https://storage.googleapis.com/bucket/test.jpg"
             )
@@ -465,7 +476,7 @@ class TestMediaFileModel:
             assert media_file.filename == "test.jpg"
             assert media_file.content_type == "image/jpeg"
             assert media_file.gcs_url == "https://storage.googleapis.com/bucket/test.jpg"
-            assert isinstance(media_file.local_path, Path)
+            assert media_file.local_path == temp_file.name
     
     def test_media_file_without_gcs_url(self):
         """Test MediaFile creation without GCS URL."""
@@ -473,11 +484,11 @@ class TestMediaFileModel:
             media_file = MediaFile(
                 original_url="https://example.com/test.jpg",
                 filename="test.jpg",
-                local_path=Path(temp_file.name),
+                local_path=temp_file.name,
                 content_type="image/jpeg"
             )
             
-            assert media_file.gcs_url is None
+            assert media_file.gcs_url == ""
 
 
 class TestMediaBundleModel:
@@ -490,21 +501,21 @@ class TestMediaBundleModel:
                 MediaFile(
                     original_url="https://example.com/test1.jpg",
                     filename="test1.jpg",
-                    local_path=Path(temp_file.name),
+                    local_path=temp_file.name,
                     content_type="image/jpeg"
                 ),
                 MediaFile(
                     original_url="https://example.com/test2.png",
                     filename="test2.png",
-                    local_path=Path(temp_file.name),
+                    local_path=temp_file.name,
                     content_type="image/png"
                 )
             ]
             
-            bundle = MediaBundle(media_files=media_files)
+            bundle = MediaBundle(files=media_files)
             
-            assert len(bundle.media_files) == 2
-            assert all(isinstance(f, MediaFile) for f in bundle.media_files)
+            assert len(bundle.files) == 2
+            assert all(isinstance(f, MediaFile) for f in bundle.files)
 
 
 class TestUpdatedContentBundleModel:
@@ -514,16 +525,16 @@ class TestUpdatedContentBundleModel:
         """Test UpdatedContentBundle model creation."""
         posts = [{"content": "Updated post content"}]
         pages = [{"content": "Updated page content"}]
-        media_bundle = MediaBundle(media_files=[])
+        media_bundle = MediaBundle(files=[])
         
         bundle = UpdatedContentBundle(
-            updated_posts=posts,
-            updated_pages=pages,
+            posts=posts,
+            pages=pages,
             media_bundle=media_bundle
         )
         
-        assert bundle.updated_posts == posts
-        assert bundle.updated_pages == pages
+        assert bundle.posts == posts
+        assert bundle.pages == pages
         assert isinstance(bundle.media_bundle, MediaBundle)
 
 
@@ -534,9 +545,9 @@ class TestConvenienceFunction:
     def test_process_media_migration_convenience_function(self, mock_process):
         """Test the convenience process_media_migration function."""
         mock_result = UpdatedContentBundle(
-            updated_posts=[],
-            updated_pages=[],
-            media_bundle=MediaBundle(media_files=[])
+            posts=[],
+            pages=[],
+            media_bundle=MediaBundle(files=[])
         )
         mock_process.return_value = mock_result
         
@@ -549,7 +560,7 @@ class TestConvenienceFunction:
                 gcs_credentials_path="/fake/path",
                 gcs_bucket_name="test-bucket",
                 gcs_folder="media",
-                site_url="https://example.com"
+                wp_site_url="https://example.com"
             )
             
             assert isinstance(result, UpdatedContentBundle)
@@ -562,9 +573,9 @@ class TestErrorHandling:
     def test_invalid_gcs_credentials_path(self):
         """Test handling of invalid GCS credentials path."""
         with patch('media_agent.storage.Client') as mock_client:
-            mock_client.from_service_account_json.side_effect = FileNotFoundError("Credentials not found")
-            
-            with pytest.raises(FileNotFoundError):
+            mock_client.side_effect = FileNotFoundError("Credentials not found")
+
+            with pytest.raises(ValueError, match="GCS initialization failed"):
                 MediaAgent(
                     gcs_credentials_path="/invalid/path",
                     gcs_bucket_name="test-bucket",
@@ -587,7 +598,7 @@ class TestErrorHandling:
                 media_file = MediaFile(
                     original_url="https://example.com/test.jpg",
                     filename="test.jpg",
-                    local_path=Path(temp_file.name),
+                    local_path=temp_file.name,
                     content_type="image/jpeg"
                 )
                 

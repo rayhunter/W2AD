@@ -14,9 +14,11 @@ A comprehensive tool for migrating WordPress sites to Astro with automatic Decap
 
 ### 1. Setup
 
+Requires Python 3.11 and Node.js (for building generated sites).
+
 ```bash
 # Clone and setup
-cd WP2ASTRO+Decap
+cd W2AD
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
@@ -80,8 +82,8 @@ After migration, clients get:
 The migration uses a 7-agent pipeline with built-in content sanitization:
 
 1. **ExtractionAgent** - WordPress REST API content extraction
-2. **TransformAgent** - HTML to Markdown conversion with content sanitization
-3. **MediaAgent** - Asset migration and optimization to Google Cloud Storage
+2. **MediaAgent** - Media and featured image migration to Google Cloud Storage
+3. **TransformAgent** - HTML to Markdown conversion with content sanitization
 4. **CMSConfigAgent** - Decap CMS configuration generation
 5. **AstroScaffoldAgent** - Complete project scaffolding with validation
 6. **GitHubAgent** - GitHub repository creation and code push
@@ -98,16 +100,13 @@ The migration tool includes comprehensive content sanitization to prevent build 
 
 ## 🔧 Configuration
 
-### Environment Variables
+### Credentials
 
-Create a `.env` file:
+All credentials are entered in the app's form (no `.env` needed). Media, GitHub, and Cloudflare are optional — leave them blank to skip that step.
 
-```env
-GITHUB_TOKEN=your_github_token
-CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
-CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
-GOOGLE_CLOUD_CREDENTIALS=path/to/credentials.json
-```
+- **Google Cloud Storage** (media) - a service account JSON key (enter its full path) and a bucket. The bucket needs **fine-grained** access control and the service account needs **Storage Object Admin** on it; otherwise image links fall back to URLs that expire.
+- **GitHub** - a personal access token that can create repos: classic with the `repo` scope, or fine-grained with *All repositories* + *Administration* and *Contents* read/write.
+- **Cloudflare Pages** - an API token (not the Global API Key) with *Cloudflare Pages: Edit* and *Account Settings: Read*, plus your Account ID. Connect Cloudflare to your GitHub account once (Workers & Pages → Create → Connect to Git) before deploying.
 
 ### WordPress Requirements
 
@@ -129,11 +128,16 @@ Generated projects are saved to:
 output/generated-projects/your-project-name/
 ```
 
-Each project is:
-- **Timestamped** for easy identification
-- **Self-contained** and ready to deploy
-- **Fully documented** with README files
-- **Git-ready** with proper .gitignore
+The folder is named after the repository name you enter; re-running with the same name overwrites it. A README and `.gitignore` are added when the GitHub step runs.
+
+To run a generated site locally:
+
+```bash
+cd output/generated-projects/your-project-name/
+npm install
+npm run dev      # http://localhost:4321
+npm run build    # static output in dist/
+```
 
 ## 🔒 Security
 
@@ -149,7 +153,7 @@ This tool demonstrates modern Python development practices:
 - **Agent Architecture** for separation of concerns
 - **Streamlit UI** for user-friendly interface
 - **Type Hints** throughout codebase
-- **Comprehensive Testing** with pytest
+- **Tests** with pytest - run `pytest` (tests live in `tests/pytest/`; many are out of date with the current agents)
 
 ## 📄 License
 

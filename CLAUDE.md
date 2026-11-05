@@ -60,5 +60,8 @@ The pipeline deliberately does **not** call the full `sanitize_markdown_content(
 ### Configuration / credentials
 Credentials (GitHub token, Cloudflare API token + account ID, GCS service-account JSON path + bucket) are entered in the Streamlit form and passed as arguments; `.env` is not auto-loaded by the app. `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` env vars are only read by `deploy_agent.py`'s `__main__` block. `media_agent.py` sets `GOOGLE_APPLICATION_CREDENTIALS` from the provided path.
 
+### CMS login (per-site OAuth)
+Each generated site logs in to Decap through its own Cloudflare Pages Functions, `functions/auth.js` and `functions/callback.js`, which the scaffold copies from `cms_oauth/`. `public/admin/index.html` sets `backend.base_url` to `window.location.origin` at runtime, so `config.yml` has no URL in it. Each site needs its own GitHub OAuth app with callback `https://<site>/callback`; its client ID and secret are entered in the form and sent to Cloudflare as `secret_text` env vars (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`), but only when the Pages project is first created. Function tests: `cd cms_oauth && node --test`.
+
 ### Output
 Generated projects are written to `output/generated-projects/<project-name>/` with content in `src/content/blog/` and `src/content/pages/`, layouts in `src/layouts/`, and the Decap admin at `public/admin/` (`index.html` + `config.yml`).

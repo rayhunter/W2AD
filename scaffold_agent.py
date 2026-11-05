@@ -12,6 +12,9 @@ from content_sanitizer import ContentSanitizer
 
 _sanitizer = ContentSanitizer()
 
+# Source of the /auth and /callback Pages Functions copied into each site
+OAUTH_FUNCTIONS_DIR = Path(__file__).parent / "cms_oauth"
+
 class ProjectStructure(BaseModel):
     """Model representing the Astro project structure."""
     project_root: str
@@ -158,11 +161,14 @@ export default defineConfig({
     </style>
   </head>
   <body>
+    <script>window.CMS_MANUAL_INIT = true;</script>
     <script src="https://unpkg.com/decap-cms@^3.0.0/dist/decap-cms.js"></script>
     <script>
-      // Initialize Decap CMS
+      // Initialize Decap CMS. GitHub login goes through this site's own
+      // /auth and /callback Pages Functions (functions/auth.js, functions/callback.js);
+      // this config is merged into config.yml.
       if (typeof DecapCMS !== 'undefined') {
-        DecapCMS.init();
+        DecapCMS.init({ config: { backend: { base_url: window.location.origin } } });
       } else {
         console.error('Decap CMS failed to load');
       }
@@ -176,6 +182,8 @@ export default defineConfig({
         self.project_structure.config_files.extend([str(config_path), str(admin_path)])
         self.logger.info(f"Created CMS config: {config_path}")
         
+        self.create_oauth_functions()
+
         # If OAuth app was created, save credentials for reference
         if hasattr(self.cms_config, 'oauth_app') and self.cms_config.oauth_app:
             oauth_path = config_path.parent / "oauth_config.json"
@@ -184,6 +192,17 @@ export default defineConfig({
             self.project_structure.config_files.append(str(oauth_path))
             self.logger.info(f"Saved OAuth config: {oauth_path}")
         
+    def create_oauth_functions(self):
+        """Copy the GitHub OAuth Pages Functions that let editors log in at /admin/."""
+        functions_dir = self.project_root / "functions"
+        functions_dir.mkdir(parents=True, exist_ok=True)
+
+        for name in ("auth.js", "callback.js"):
+            target = functions_dir / name
+            shutil.copyfile(OAUTH_FUNCTIONS_DIR / name, target)
+            self.project_structure.config_files.append(str(target))
+        self.logger.info(f"Created OAuth functions in {functions_dir}")
+
     def create_package_json(self):
         """Create package.json with necessary dependencies."""
         package_content = {

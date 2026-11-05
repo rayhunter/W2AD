@@ -121,7 +121,9 @@ def page_customer_ui():
         cloudflare_api_token = None
         cloudflare_account_id = None
         custom_domain = None
-        
+        cms_oauth_client_id = None
+        cms_oauth_client_secret = None
+
         if enable_cloudflare_deploy:
             cloudflare_api_token = st.text_input(
                 "Cloudflare API Token", 
@@ -136,6 +138,16 @@ def page_customer_ui():
                 "Custom Domain (Optional)",
                 placeholder="example.com",
                 help="Optional: Custom domain to configure for your site"
+            )
+            cms_oauth_client_id = st.text_input(
+                "CMS GitHub OAuth Client ID (Optional)",
+                help="From a GitHub OAuth app for this site (https://github.com/settings/developers) "
+                     "with callback URL https://<your-site>/callback. Lets editors log in at /admin/."
+            )
+            cms_oauth_client_secret = st.text_input(
+                "CMS GitHub OAuth Client Secret (Optional)",
+                type="password",
+                help="Stored as an encrypted Cloudflare Pages environment variable"
             )
         
         st.subheader(":orange[Media Migration (Optional)]")
@@ -348,14 +360,25 @@ slug: {page['slug']}{image_line}
                             try:
                                 # Extract GitHub repository from result
                                 github_repo = f"{github_username}/{repo_name}"
-                                
+
+                                # Credentials for the site's /auth and /callback functions (CMS login)
+                                cms_oauth_env = {}
+                                if cms_oauth_client_id and cms_oauth_client_secret:
+                                    cms_oauth_env = {
+                                        "GITHUB_CLIENT_ID": cms_oauth_client_id,
+                                        "GITHUB_CLIENT_SECRET": cms_oauth_client_secret
+                                    }
+                                else:
+                                    st.warning("⚠️ No CMS OAuth app provided - editors won't be able to log in at /admin/ until GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are set in Cloudflare Pages")
+
                                 deploy_result = deploy_to_cloudflare(
                                     project_name=repo_name,
                                     github_repo=github_repo,
                                     cloudflare_api_token=cloudflare_api_token,
                                     cloudflare_account_id=cloudflare_account_id,
                                     custom_domain=custom_domain if custom_domain else None,
-                                    wait_for_completion=False  # Don't wait for build to complete
+                                    wait_for_completion=False,  # Don't wait for build to complete
+                                    secret_environment_variables=cms_oauth_env
                                 )
                                 st.session_state.deploy_result = deploy_result
                                 

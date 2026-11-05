@@ -27,6 +27,7 @@ class CloudflareDeployment(BaseModel):
     build_output_directory: str = "dist"
     root_directory: str = ""
     environment_variables: Dict[str, str] = {}
+    secret_environment_variables: Dict[str, str] = {}
     compatibility_date: str = "2024-01-15"
     compatibility_flags: List[str] = []
 
@@ -91,10 +92,20 @@ class CloudflareAPI:
         Args:
             deployment_config: Deployment configuration
             github_repo: GitHub repository in format "owner/repo"
-            
+
         Returns:
             API response with project details
         """
+        # The Pages API expects each variable as {"type": ..., "value": ...}
+        env_vars = {
+            name: {"type": "plain_text", "value": value}
+            for name, value in deployment_config.environment_variables.items()
+        }
+        env_vars.update({
+            name: {"type": "secret_text", "value": value}
+            for name, value in deployment_config.secret_environment_variables.items()
+        })
+
         project_data = {
             "name": deployment_config.project_name,
             "production_branch": deployment_config.production_branch,
@@ -119,7 +130,7 @@ class CloudflareAPI:
             },
             "deployment_configs": {
                 "production": {
-                    "environment_variables": deployment_config.environment_variables,
+                    "environment_variables": env_vars,
                     "kv_namespaces": {},
                     "durable_object_namespaces": {},
                     "d1_databases": {},
@@ -128,7 +139,7 @@ class CloudflareAPI:
                     "compatibility_flags": deployment_config.compatibility_flags
                 },
                 "preview": {
-                    "environment_variables": deployment_config.environment_variables,
+                    "environment_variables": env_vars,
                     "kv_namespaces": {},
                     "durable_object_namespaces": {},
                     "d1_databases": {},
@@ -268,15 +279,17 @@ class DeployAgent(BaseAgent):
     def prepare_deployment_config(self, project_name: str, 
                                 github_repo: str,
                                 custom_domain: Optional[str] = None,
-                                environment_variables: Optional[Dict[str, str]] = None) -> CloudflareDeployment:
+                                environment_variables: Optional[Dict[str, str]] = None,
+                                secret_environment_variables: Optional[Dict[str, str]] = None) -> CloudflareDeployment:
         """Prepare deployment configuration for Astro project.
-        
+
         Args:
             project_name: Name for the Cloudflare Pages project
             github_repo: GitHub repository in format "owner/repo"
             custom_domain: Optional custom domain
             environment_variables: Optional environment variables
-            
+            secret_environment_variables: Optional encrypted variables (e.g. GITHUB_CLIENT_SECRET)
+
         Returns:
             CloudflareDeployment configuration
         """
@@ -300,6 +313,7 @@ class DeployAgent(BaseAgent):
             build_output_directory="dist",
             root_directory="",
             environment_variables=default_env_vars,
+            secret_environment_variables=secret_environment_variables or {},
             compatibility_date="2024-01-15",
             compatibility_flags=[]
         )
@@ -838,9 +852,10 @@ def deploy_to_cloudflare(project_name: str, github_repo: str,
                         cloudflare_api_token: str, cloudflare_account_id: str,
                         custom_domain: Optional[str] = None,
                         environment_variables: Optional[Dict[str, str]] = None,
-                        wait_for_completion: bool = True) -> DeploymentResult:
+                        wait_for_completion: bool = True,
+                        secret_environment_variables: Optional[Dict[str, str]] = None) -> DeploymentResult:
     """Convenience function for deploying to Cloudflare Pages.
-    
+
     Args:
         project_name: Name for the deployment project
         github_repo: GitHub repository in format "owner/repo"
@@ -848,6 +863,7 @@ def deploy_to_cloudflare(project_name: str, github_repo: str,
         cloudflare_account_id: Cloudflare account ID
         custom_domain: Optional custom domain
         environment_variables: Optional environment variables
+        secret_environment_variables: Optional encrypted variables (e.g. GITHUB_CLIENT_SECRET)
         wait_for_completion: Whether to wait for deployment completion
         
     Returns:
@@ -869,7 +885,8 @@ def deploy_to_cloudflare(project_name: str, github_repo: str,
             project_name=project_name,
             github_repo=github_repo,
             custom_domain=custom_domain,
-            environment_variables=environment_variables
+            environment_variables=environment_variables,
+            secret_environment_variables=secret_environment_variables
         )
         
         # Deploy to Cloudflare Pages
